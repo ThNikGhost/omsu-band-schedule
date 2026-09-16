@@ -539,11 +539,12 @@ function decorateNow(view) {
   return view
 }
 
-// Динамический class компилятор поддерживает, но условное оформление здесь
-// проще задать инлайновым стилем — значений всего три.
-const STYLE_CURRENT = 'opacity: 1;'
-const STYLE_PAST = 'opacity: 0.65;'
-const STYLE_NORMAL = 'opacity: 1;'
+// Прошедшие пары раньше гасились прозрачностью, и это было ошибкой: вечером
+// прошедшими становятся все, и весь экран выглядел выцветшим. Текст теперь
+// всегда полностью белый, а состояние строки различается фоном.
+const STYLE_CURRENT = 'background-color: #1E3A5F;'
+const STYLE_PAST = 'background-color: #0C0C0C;'
+const STYLE_NORMAL = 'background-color: #1A1A1A;'
 
 function decorateDay(view) {
   for (let i = 0; i < view.rows.length; i += 1) {
@@ -663,6 +664,7 @@ function buildDiag(state) {
   font-weight: bold;
   color: #ffffff;
   text-align: center;
+  line-height: 46px;
 }
 
 .view-title {
@@ -670,6 +672,7 @@ function buildDiag(state) {
   color: #b0b0b0;
   text-align: center;
   margin-top: 2px;
+  line-height: 20px;
 }
 
 .stale-mark {
@@ -700,7 +703,7 @@ function buildDiag(state) {
 /* --- Сейчас --- */
 
 .headline {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: bold;
   color: #ffffff;
   text-align: center;
@@ -756,6 +759,7 @@ function buildDiag(state) {
   color: #b0b0b0;
   text-align: center;
   margin-bottom: 6px;
+  line-height: 22px;
 }
 
 .empty {
@@ -779,26 +783,25 @@ function buildDiag(state) {
 .scroll {
   flex-direction: column;
   width: 100%;
-  height: 360px;
+  height: 374px;
 }
 
 /* Экраны без подзаголовка: «Звонки», «Состояние», «Отладка». */
 .scroll-full {
   flex-direction: column;
   width: 100%;
-  height: 392px;
+  height: 402px;
 }
 
 .row {
   flex-direction: column;
   width: 100%;
   margin-bottom: 6px;
-  padding-top: 5px;
-  padding-bottom: 5px;
-  padding-left: 7px;
-  padding-right: 7px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-left: 8px;
+  padding-right: 8px;
   border-radius: 10px;
-  background-color: #121212;
 }
 
 
@@ -829,13 +832,18 @@ function buildDiag(state) {
   flex-direction: row;
   width: 100%;
   margin-bottom: 6px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-left: 8px;
+  padding-right: 8px;
+  border-radius: 10px;
 }
 
 .bell-pair {
   font-size: 22px;
   font-weight: bold;
   color: #ffffff;
-  width: 20px;
+  width: 24px;
   text-align: center;
   margin-right: 6px;
 }
@@ -912,5 +920,6 @@ function buildDiag(state) {
   font-size: 15px;
   color: #8a8a8a;
   text-align: center;
+  line-height: 18px;
 }
 </style>

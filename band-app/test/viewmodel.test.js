@@ -20,12 +20,16 @@ import {
 const TODAY = '2026-09-16'
 const at = (h, m) => h * 60 + m
 
+// На экране 212 px в строку влезает около 15 знаков жирным кеглем 22, а перенос
+// на устройстве посимвольный: длинный заголовок рвётся посреди слова.
+const HEADLINE_LIMIT = 15
+
 describe('экран «Сейчас»', () => {
   it('идёт пара, первая половина', () => {
     const view = nowView(mock, bells, TODAY, at(9, 0))
     expect(view.state).toBe(STATE.LESSON)
-    expect(view.headline).toBe('Идёт 1 пара · 1-я половина')
-    expect(view.detail).toBe('до перемены 30 мин')
+    expect(view.headline).toBe('Идёт 1 пара')
+    expect(view.detail).toBe('1-я половина · до перемены 30 мин')
     expect(view.card.label).toBe('Сейчас')
     expect(view.card.name).toBe('Методы вычислений')
     expect(view.card.room).toBe('4-303')
@@ -33,27 +37,27 @@ describe('экран «Сейчас»', () => {
 
   it('перерыв внутри пары', () => {
     const view = nowView(mock, bells, TODAY, at(9, 32))
-    expect(view.headline).toBe('Идёт 1 пара · перерыв')
-    expect(view.detail).toBe('2-я половина в 09:35')
+    expect(view.headline).toBe('Идёт 1 пара')
+    expect(view.detail).toBe('перерыв · 2-я половина в 09:35')
   })
 
   it('вторая половина', () => {
     const view = nowView(mock, bells, TODAY, at(10, 0))
-    expect(view.headline).toBe('Идёт 1 пара · 2-я половина')
-    expect(view.detail).toBe('до конца 20 мин')
+    expect(view.headline).toBe('Идёт 1 пара')
+    expect(view.detail).toBe('2-я половина · до конца 20 мин')
   })
 
   it('обычная перемена', () => {
     const view = nowView(mock, bells, TODAY, at(10, 25))
-    expect(view.headline).toBe('Перемена до 10:30')
-    expect(view.detail).toBe('2 пара через 5 мин')
+    expect(view.headline).toBe('Перемена')
+    expect(view.detail).toBe('до 10:30 · 2 пара через 5 мин')
     expect(view.card.label).toBe('Дальше')
   })
 
   it('большой перерыв назван по-своему', () => {
     const view = nowView(mock, bells, TODAY, at(12, 20))
-    expect(view.headline).toBe('Большой перерыв до 12:45')
-    expect(view.detail).toBe('3 пара через 25 мин')
+    expect(view.headline).toBe('Большой перерыв')
+    expect(view.detail).toBe('до 12:45 · 3 пара через 25 мин')
   })
 
   it('до начала занятий', () => {
@@ -63,9 +67,25 @@ describe('экран «Сейчас»', () => {
     expect(view.card.label).toBe('Первая пара')
   })
 
+  it('заголовок всегда помещается в строку', () => {
+    // Перебираем сутки по пять минут: любой заголовок, который длиннее строки,
+    // на устройстве переносится посреди слова — так «Пары закончились»
+    // оставляли одинокий мягкий знак на второй строке.
+    const seen = []
+    for (let m = 0; m < 24 * 60; m += 5) {
+      const view = nowView(mock, bells, TODAY, m)
+      if (seen.indexOf(view.headline) < 0) {
+        seen.push(view.headline)
+      }
+      expect(view.headline.length, view.headline).toBeLessThanOrEqual(HEADLINE_LIMIT)
+    }
+    // Заодно убеждаемся, что перебор действительно прошёл по разным состояниям.
+    expect(seen.length).toBeGreaterThan(2)
+  })
+
   it('пары закончились', () => {
     const view = nowView(mock, bells, TODAY, at(20, 0))
-    expect(view.headline).toBe('Пары закончились')
+    expect(view.headline).toBe('Пар больше нет')
     expect(view.card).toBe(null)
   })
 

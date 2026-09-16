@@ -34,7 +34,7 @@ export function nowView(payload, bells, todayIso, minutes) {
   if (info.state === STATE.AFTER) {
     return {
       state: info.state,
-      headline: 'Пары закончились',
+      headline: 'Пар больше нет',
       detail: '',
       card: null
     }
@@ -43,7 +43,7 @@ export function nowView(payload, bells, todayIso, minutes) {
   if (info.state === STATE.BEFORE) {
     return {
       state: info.state,
-      headline: 'Занятия ещё не начались',
+      headline: 'Занятий ещё нет',
       detail: info.next.pair + ' пара через ' + minutesLabel(info.minutesToNext),
       card: lessonCard(info.next, 'Первая пара')
     }
@@ -53,8 +53,8 @@ export function nowView(payload, bells, todayIso, minutes) {
     const headline = info.isBigBreak ? 'Большой перерыв' : 'Перемена';
     return {
       state: info.state,
-      headline: headline + ' до ' + hhmm(info.next.start),
-      detail: info.next.pair + ' пара через ' + minutesLabel(info.minutesToNext),
+      headline: headline,
+      detail: 'до ' + hhmm(info.next.start) + ' · ' + info.next.pair + ' пара через ' + minutesLabel(info.minutesToNext),
       card: lessonCard(info.next, 'Дальше')
     }
   }
@@ -64,7 +64,7 @@ export function nowView(payload, bells, todayIso, minutes) {
 
 function lessonNow(info) {
   const slot = info.current
-  const parts = ['Идёт ' + slot.pair + ' пара']
+  const parts = []
   let detail
 
   if (info.half === 1 && !info.inHalfBreak) {
@@ -81,9 +81,13 @@ function lessonNow(info) {
     detail = 'до конца ' + minutesLabel(info.minutesToEnd)
   }
 
+  if (parts.length) {
+    detail = parts.join(' · ') + ' · ' + detail
+  }
+
   return {
     state: STATE.LESSON,
-    headline: parts.join(' · '),
+    headline: 'Идёт ' + slot.pair + ' пара',
     detail: detail,
     card: lessonCard(slot, 'Сейчас')
   }
