@@ -11,7 +11,7 @@ from __future__ import annotations
 import datetime as dt
 from zoneinfo import ZoneInfo
 
-from icalendar import Calendar, Event, vDuration
+from icalendar import Alarm, Calendar, Event, vDuration
 
 from app.bells import Bells
 from app.models import Lesson, Snapshot
@@ -31,6 +31,11 @@ TYPE_LABELS = {
 }
 
 
+# За сколько минут до пары будить напоминание. Десять — чтобы успеть дойти,
+# и достаточно поздно, чтобы уведомление не забылось.
+DEFAULT_ALARM_MINUTES = 10
+
+
 def build_ics(
     snapshot: Snapshot,
     bells: Bells,
@@ -38,6 +43,7 @@ def build_ics(
     tz: ZoneInfo,
     subgroup: int | None,
     now: dt.datetime,
+    alarm_minutes: int = DEFAULT_ALARM_MINUTES,
 ) -> bytes:
     calendar = Calendar()
     calendar.add("prodid", PRODID)
@@ -52,7 +58,7 @@ def build_ics(
     for lesson in snapshot.lessons:
         if subgroup is not None and lesson.subgroup not in (None, subgroup):
             continue
-        event = _to_event(lesson, snapshot, bells, tz=tz, now=now)
+        event = _to_event(lesson, snapshot, bells, tz=tz, now=now, alarm_minutes=alarm_minutes)
         if event is not None:
             calendar.add_component(event)
 
@@ -73,6 +79,7 @@ def _to_event(
     *,
     tz: ZoneInfo,
     now: dt.datetime,
+    alarm_minutes: int,
 ) -> Event | None:
     span = bells.span(lesson.pair, lesson.date, tz)
     if span is None:
@@ -104,7 +111,29 @@ def _to_event(
     if description:
         event.add("description", "\n".join(description))
 
+    event.add_component(_reminder(lesson, alarm_minutes))
+
     return event
+
+
+def _reminder(lesson: Lesson, minutes: int) -> Alarm:
+    """Напоминание внутри события.
+
+    Нужно не ради календаря, а ради браслета. У Band 10 одна активная
+    bluetooth-сессия, и держит её Mi Fitness, если пользователю нужны сон и
+    пульс, — тогда путь через AstroBox недоступен (см. docs/DECISIONS.md).
+    Но уведомления зеркалит на браслет сам Mi Fitness, поэтому подписанный
+    календарь поднимает напоминание, а оно доезжает до экрана.
+
+    Отсюда и текст: на браслете видна только эта строка, поэтому в ней сразу
+    номер пары, аудитория и предмет.
+    """
+    alarm = Alarm()
+    alarm.add("action", "DISPLAY")
+    alarm.add("trigger", dt.timedelta(minutes=-minutes))
+    where = f" · {lesson.room}" if lesson.room else ""
+    alarm.add("description", f"{lesson.pair} пара{where} · {_summary(lesson)}")
+    return alarm
 
 
 def _summary(lesson: Lesson) -> str:

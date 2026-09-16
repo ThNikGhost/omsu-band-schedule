@@ -204,6 +204,26 @@ def test_calendar_requires_a_token(client) -> None:
     assert client.get("/api/v1/calendar/5028.ics").status_code == 401
 
 
+def test_calendar_events_carry_a_reminder(client):
+    """Напоминание — единственный способ показать пару на браслете, когда
+    bluetooth-сессию держит Mi Fitness: оно поднимает уведомление на телефоне,
+    а Mi Fitness зеркалит уведомления на экран. Подробности — в DECISIONS.md."""
+    from icalendar import Calendar
+
+    cal = Calendar.from_ical(client.get(f"/api/v1/calendar/5028.ics?token={TOKEN}").content)
+    events = [c for c in cal.walk("VEVENT")]
+    assert events
+
+    for event in events:
+        alarms = list(event.walk("VALARM"))
+        assert len(alarms) == 1, "у каждой пары ровно одно напоминание"
+        alarm = alarms[0]
+        assert alarm["action"] == "DISPLAY"
+        assert alarm["trigger"].dt == dt.timedelta(minutes=-10)
+        # На браслете видна только эта строка, поэтому в ней должно быть место.
+        assert str(event["summary"]).split(" (")[0] in str(alarm["description"])
+
+
 # ------------------------------------------------------- bells, health, admin
 
 
