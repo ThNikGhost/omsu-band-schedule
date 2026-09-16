@@ -5,6 +5,7 @@
       <text class="clock">{{ clock }}</text>
       <text class="view-title">{{ viewTitle }}</text>
       <text class="stale-mark" show="{{ stale }}">данные устарели</text>
+      <text class="fault" show="{{ fault }}">{{ fault }}</text>
     </div>
 
     <!-- Нет данных вообще -->
@@ -198,6 +199,7 @@ export default {
     clock: '--:--',
     stale: false,
     hasData: false,
+    fault: '',
     now: { headline: '', detail: '', card: null },
     day: { subtitle: '', rows: [], empty: true, emptyText: '' },
     bells: { rows: [] },
@@ -210,30 +212,60 @@ export default {
   onInit() {},
 
   onReady() {
-    getState()
-    this.loadCache()
-    this.refresh()
+    this.guard('onReady', function (self) {
+      getState()
+      self.loadCache()
+      self.refresh()
+    })
   },
 
   onShow() {
-    this.openLink()
-    this.refresh()
-    this.startTimer()
-    // Спрашиваем расписание при каждом открытии: если ничего не изменилось,
-    // телефон ответит up_to_date и по BLE ничего не поедет.
-    this.requestSync()
+    this.guard('onShow', function (self) {
+      self.openLink()
+      self.refresh()
+      self.startTimer()
+      // Спрашиваем расписание при каждом открытии: если ничего не изменилось,
+      // телефон ответит up_to_date и по BLE ничего не поедет.
+      self.requestSync()
+    })
   },
 
   onHide() {
-    this.stopTimer()
+    this.guard('onHide', function (self) {
+      self.stopTimer()
+    })
   },
 
   onDestroy() {
-    this.stopTimer()
-    const state = getState()
-    wire.close(state.connection)
-    state.connection = null
-    runtimeState = null
+    this.guard('onDestroy', function (self) {
+      self.stopTimer()
+      const state = getState()
+      wire.close(state.connection)
+      state.connection = null
+      runtimeState = null
+    })
+  },
+
+  /**
+   * Показывает исключение на экране вместо того, чтобы уронить страницу.
+   *
+   * Снять `console.log` с браслета нечем, поэтому единственный способ узнать об
+   * ошибке — вывести её сюда. Молчаливое падение уже стоило нам вечера: первая
+   * версия приложения умирала на загрузке модулей и показывала чёрный экран,
+   * ничем себя не объясняя.
+   */
+  guard(label, body) {
+    try {
+      body(this)
+    } catch (err) {
+      const text = err && err.message ? err.message : String(err)
+      console.warn(label + ' упал: ' + text)
+      try {
+        this.fault = label + ': ' + text
+      } catch (ignored) {
+        // Если даже это не проходит, помочь уже нечем.
+      }
+    }
   },
 
   // ------------------------------------------------------------ данные
@@ -409,7 +441,9 @@ export default {
 
   nextView() {
     this.view = (this.view + 1) % VIEW_COUNT
-    this.refresh()
+    this.guard('обновление', function (self) {
+      self.refresh()
+    })
   },
 
   refresh() {
@@ -631,6 +665,15 @@ function buildDiag(state) {
   color: #d08a3a;
   text-align: center;
   margin-top: 2px;
+}
+
+/* Исключение видно прямо на браслете: логов с устройства не снять ничем. */
+.fault {
+  font-size: 12px;
+  color: #ff6b6b;
+  text-align: center;
+  margin-top: 2px;
+  lines: 3;
 }
 
 .body {

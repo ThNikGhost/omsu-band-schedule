@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "description": "OmSU class schedule for Xiaomi Smart Band 10 (Vela quick app)",
-  "type": "module",
   "engines": {
     "node": ">=18"
   },

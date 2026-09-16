@@ -11,7 +11,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 const DIST = new URL('../dist/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
@@ -58,6 +58,50 @@ if (!/build success/i.test(output)) {
 const warnings = output.split('\n').filter((line) => /unsupport|Unknown element|missing attributes/i.test(line))
 for (const line of warnings) {
   problems.push('предупреждение компилятора: ' + line.trim())
+}
+
+/**
+ * The bundle must not mix module systems.
+ *
+ * `"type": "module"` in package.json made the bundler treat src/common/*.js as
+ * ES modules and wrap them as `(module, __webpack_exports__, __webpack_require__)`,
+ * while the toolkit's babel pass kept emitting CommonJS bodies that assign to a
+ * bare `exports`. That identifier then does not exist, so the very first shared
+ * module threw `exports is not defined` at page load - before anything was
+ * drawn. The watch showed a black screen and nothing else, and no test could
+ * have caught it, because on Node those modules are perfectly fine.
+ *
+ * The device gives us no logs, so the artifact is checked here instead.
+ */
+function moduleSystemProblem() {
+  const BUILD = new URL('../build/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+  let files = []
+  try {
+    files = readdirSync(join(BUILD, 'pages'), { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.js'))
+      .map((entry) => join(entry.parentPath || entry.path, entry.name))
+  } catch (err) {
+    return null
+  }
+
+  for (const file of files) {
+    const text = readFileSync(file, 'utf8')
+    if (/__webpack_exports__,\s*__webpack_require__\)\s*\{/.test(text)) {
+      return (
+        'модули собраны как ES-модули, но их тела пишут в CommonJS-овый `exports` — ' +
+        'на устройстве это «exports is not defined» и чёрный экран. ' +
+        'Проверьте, не вернулся ли `"type": "module"` в package.json (' +
+        file.slice(BUILD.length) +
+        ')'
+      )
+    }
+  }
+  return null
+}
+
+const mixedModules = moduleSystemProblem()
+if (mixedModules) {
+  problems.push(mixedModules)
 }
 
 const after = packages()
