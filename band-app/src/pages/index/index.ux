@@ -282,6 +282,11 @@ export default {
   loadCache() {
     const self = this
     const state = getState()
+    cache.readMeta(function (meta) {
+      if (meta && typeof meta.mf === 'number' && meta.mf > state.biggest) {
+        state.biggest = meta.mf
+      }
+    })
     cache.readPayload(function (payload) {
       if (payload) {
         state.payload = payload
@@ -305,7 +310,7 @@ export default {
         state.payload = trimmed
         state.source = 'с телефона'
         state.lastError = null
-        cache.writeMeta({ at: Date.now(), h: trimmed.h })
+        cache.writeMeta({ at: Date.now(), h: trimmed.h, mf: state.biggest })
       } else {
         // Старый кэш остался нетронутым — показываем его дальше.
         state.lastError = problem || 'не удалось сохранить'
@@ -389,6 +394,7 @@ export default {
     const size = utf8Length(typeof data === 'string' ? data : JSON.stringify(data) || '')
     if (size > state.biggest) {
       state.biggest = size
+      cache.writeMeta({ at: Date.now(), h: state.payload ? state.payload.h : null, mf: size })
     }
 
     const outcome = step(state.receiver, data, Date.now())
@@ -405,7 +411,7 @@ export default {
     }
     if (outcome.status === 'up_to_date') {
       state.lastError = null
-      cache.writeMeta({ at: Date.now(), h: state.payload ? state.payload.h : null })
+      cache.writeMeta({ at: Date.now(), h: state.payload ? state.payload.h : null, mf: state.biggest })
     }
     if (outcome.apply) {
       this.storePayload(outcome.apply)
