@@ -28,7 +28,9 @@ const RADIUS: u32 = 10;
 
 pub async fn render_main_ui(element_id: &str) {
     with_state(|s| s.root = Some(element_id.to_string()));
-    sync::refresh_device().await;
+    // Открытие настроек — надёжный момент, чтобы досоздать подписку,
+    // если при загрузке плагина браслет ещё не был подключён.
+    sync::ensure_subscribed().await;
     psys_host::ui_v3::render(element_id, build_ui());
 }
 

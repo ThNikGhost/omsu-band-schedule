@@ -43,6 +43,10 @@ impl event_v3::Guest for OmsuPlugin {
             astrobox_ng_wit::block_on(async {
                 sync::handle_inbound(&event_payload).await;
             });
+        } else if matches!(event_type, EventType::DeviceAction) {
+            astrobox_ng_wit::block_on(async {
+                sync::ensure_subscribed().await;
+            });
         } else {
             tracing::debug!("событие {:?}: {}", event_type, event_payload);
         }
@@ -85,21 +89,7 @@ impl lifecycle::Guest for OmsuPlugin {
         // host routes interconnect traffic only to plugins that asked for it,
         // matching on device address plus package name exactly.
         astrobox_ng_wit::block_on(async {
-            sync::refresh_device().await;
-            let (addr, package) =
-                state::with_state(|s| (s.device_addr.clone(), s.settings.package_name.clone()));
-            if addr.is_empty() || package.is_empty() {
-                tracing::info!("подписка на сообщения браслета отложена: устройство не подключено");
-                return;
-            }
-            match astrobox_ng_wit::astrobox::psys_host::register::register_interconnect_recv(
-                &addr, &package,
-            )
-            .await
-            {
-                Ok(()) => tracing::info!("подписка на сообщения от {package} оформлена"),
-                Err(()) => tracing::warn!("не удалось подписаться на сообщения браслета"),
-            }
+            sync::ensure_subscribed().await;
         });
     }
 }

@@ -23,6 +23,9 @@ pub struct AppState {
     pub log: Vec<String>,
     /// Frames of the current transfer, and how far it has got.
     pub pending: Option<Transfer>,
+    /// Адрес и package, на которые уже оформлена подписка на сообщения.
+    /// Пусто — подписки нет, её нужно оформить при первой возможности.
+    pub subscribed: Option<(String, String)>,
 }
 
 pub struct Transfer {
@@ -45,6 +48,7 @@ pub fn state() -> &'static Mutex<AppState> {
             busy: false,
             log: Vec::new(),
             pending: None,
+            subscribed: None,
         })
     })
 }

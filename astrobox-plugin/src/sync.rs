@@ -32,6 +32,42 @@ pub async fn refresh_device() {
     }
 }
 
+/// Subscribes to the band's messages, unless that is already done.
+///
+/// The host routes interconnect traffic only to plugins that asked for it, and
+/// the subscription is tied to a device address plus a package name. It used to
+/// be made once at load and skipped without retry when the band happened to be
+/// disconnected at that moment — after which the band's requests never arrived
+/// and nothing said why. So it is re-checked wherever we touch the device.
+pub async fn ensure_subscribed() {
+    refresh_device().await;
+    let (addr, package, current) = with_state(|s| {
+        (
+            s.device_addr.clone(),
+            s.settings.package_name.clone(),
+            s.subscribed.clone(),
+        )
+    });
+
+    if addr.is_empty() || package.is_empty() {
+        return;
+    }
+    if current.as_ref() == Some(&(addr.clone(), package.clone())) {
+        return;
+    }
+
+    match psys_host::register::register_interconnect_recv(&addr, &package).await {
+        Ok(()) => {
+            with_state(|s| s.subscribed = Some((addr, package)));
+            tracing::info!("подписка на сообщения браслета оформлена");
+        }
+        Err(()) => {
+            with_state(|s| s.subscribed = None);
+            log_line("не удалось подписаться на сообщения браслета");
+        }
+    }
+}
+
 /// Full sync: fetch from the server, then hand the payload to the band.
 ///
 /// `force` ignores the stored hash, for when the user presses the button and
