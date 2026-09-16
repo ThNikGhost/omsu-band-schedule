@@ -1,8 +1,8 @@
 {
   "package": "ru.omsu.bandschedule",
   "name": "ОмГУ",
-  "versionName": "1.1.1",
-  "versionCode": 12,
+  "versionName": "1.1.2",
+  "versionCode": 13,
   "minPlatformVersion": 1000,
   "icon": "/common/logo.png",
   "deviceTypeList": [
