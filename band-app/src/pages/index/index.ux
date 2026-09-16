@@ -50,7 +50,7 @@
 
     <!-- Звонки -->
     <div class="body" if="{{ hasData && view === 3 }}">
-      <scroll class="scroll" scroll-y="true">
+      <scroll class="scroll-full" scroll-y="true">
         <div
           class="bell-row"
           for="{{(bellIndex, bell) in bells.rows}}"
@@ -67,6 +67,7 @@
 
     <!-- Состояние -->
     <div class="body status-body" if="{{ hasData && view === 4 }}">
+      <scroll class="scroll-full" scroll-y="true">
       <text class="status-line">Группа</text>
       <text class="status-value">{{ status.group }}</text>
       <text class="status-line">Обновлено</text>
@@ -79,10 +80,12 @@
         <text class="refresh-text">{{ status.action }}</text>
       </div>
       <text class="status-note">{{ status.note }}</text>
+      </scroll>
     </div>
 
     <!-- Отладка: единственный способ увидеть, что происходит на устройстве -->
     <div class="body status-body" if="{{ view === 5 }}">
+      <scroll class="scroll-full" scroll-y="true">
       <text class="status-line">Сборка</text>
       <text class="status-value">{{ diag.build }}</text>
       <text class="status-line">Связь</text>
@@ -95,6 +98,7 @@
       <text class="status-value">{{ diag.cache }}</text>
       <text class="status-line">Последняя ошибка</text>
       <text class="status-value">{{ diag.error }}</text>
+      </scroll>
     </div>
 
     <div class="footer">
@@ -538,8 +542,8 @@ function decorateNow(view) {
 // Динамический class компилятор поддерживает, но условное оформление здесь
 // проще задать инлайновым стилем — значений всего три.
 const STYLE_CURRENT = 'opacity: 1;'
-const STYLE_PAST = 'opacity: 0.5;'
-const STYLE_NORMAL = 'opacity: 0.9;'
+const STYLE_PAST = 'opacity: 0.65;'
+const STYLE_NORMAL = 'opacity: 1;'
 
 function decorateDay(view) {
   for (let i = 0; i < view.rows.length; i += 1) {
@@ -655,29 +659,32 @@ function buildDiag(state) {
 }
 
 .clock {
-  font-size: 38px;
+  font-size: 42px;
+  font-weight: bold;
   color: #ffffff;
   text-align: center;
 }
 
 .view-title {
-  font-size: 16px;
-  color: #7a7a7a;
+  font-size: 17px;
+  color: #b0b0b0;
   text-align: center;
   margin-top: 2px;
 }
 
 .stale-mark {
-  font-size: 13px;
-  color: #d08a3a;
+  font-size: 14px;
+  font-weight: bold;
+  color: #e0a050;
   text-align: center;
   margin-top: 2px;
 }
 
 /* Исключение видно прямо на браслете: логов с устройства не снять ничем. */
 .fault {
-  font-size: 13px;
-  color: #ff6b6b;
+  font-size: 14px;
+  font-weight: bold;
+  color: #ff8080;
   text-align: center;
   margin-top: 2px;
   lines: 3;
@@ -693,15 +700,16 @@ function buildDiag(state) {
 /* --- Сейчас --- */
 
 .headline {
-  font-size: 26px;
+  font-size: 28px;
+  font-weight: bold;
   color: #ffffff;
   text-align: center;
   lines: 3;
 }
 
 .detail {
-  font-size: 18px;
-  color: #9a9a9a;
+  font-size: 19px;
+  color: #c0c0c0;
   text-align: center;
   margin-top: 4px;
   lines: 2;
@@ -720,20 +728,21 @@ function buildDiag(state) {
 }
 
 .card-label {
-  font-size: 14px;
-  color: #6f6f6f;
+  font-size: 15px;
+  color: #a0a0a0;
 }
 
 .card-name {
-  font-size: 22px;
+  font-size: 23px;
+  font-weight: bold;
   color: #ffffff;
   margin-top: 2px;
   lines: 3;
 }
 
 .card-meta {
-  font-size: 17px;
-  color: #9a9a9a;
+  font-size: 18px;
+  color: #c0c0c0;
   margin-top: 2px;
   lines: 1;
   text-overflow: ellipsis;
@@ -742,15 +751,17 @@ function buildDiag(state) {
 /* --- Сегодня / Далее --- */
 
 .day-subtitle {
-  font-size: 17px;
-  color: #7a7a7a;
+  font-size: 18px;
+  font-weight: bold;
+  color: #b0b0b0;
   text-align: center;
   margin-bottom: 6px;
 }
 
 .empty {
-  font-size: 20px;
-  color: #9a9a9a;
+  font-size: 22px;
+  font-weight: bold;
+  color: #c0c0c0;
   text-align: center;
   margin-top: 40px;
 }
@@ -768,7 +779,14 @@ function buildDiag(state) {
 .scroll {
   flex-direction: column;
   width: 100%;
-  height: 356px;
+  height: 360px;
+}
+
+/* Экраны без подзаголовка: «Звонки», «Состояние», «Отладка». */
+.scroll-full {
+  flex-direction: column;
+  width: 100%;
+  height: 392px;
 }
 
 .row {
@@ -788,14 +806,15 @@ function buildDiag(state) {
 
 
 .row-top {
-  font-size: 16px;
-  color: #a8a8a8;
+  font-size: 17px;
+  color: #b8b8b8;
   lines: 1;
   text-overflow: ellipsis;
 }
 
 .row-name {
-  font-size: 21px;
+  font-size: 22px;
+  font-weight: bold;
   color: #ffffff;
   margin-top: 1px;
   lines: 2;
@@ -813,7 +832,8 @@ function buildDiag(state) {
 }
 
 .bell-pair {
-  font-size: 20px;
+  font-size: 22px;
+  font-weight: bold;
   color: #ffffff;
   width: 20px;
   text-align: center;
@@ -826,13 +846,14 @@ function buildDiag(state) {
 }
 
 .bell-time {
-  font-size: 20px;
+  font-size: 21px;
+  font-weight: bold;
   color: #ffffff;
 }
 
 .bell-halves {
-  font-size: 14px;
-  color: #9a9a9a;
+  font-size: 15px;
+  color: #b0b0b0;
 }
 
 /* --- Состояние и отладка --- */
@@ -842,13 +863,14 @@ function buildDiag(state) {
 }
 
 .status-line {
-  font-size: 14px;
-  color: #8a8a8a;
+  font-size: 15px;
+  color: #a0a0a0;
   margin-top: 8px;
 }
 
 .status-value {
-  font-size: 20px;
+  font-size: 21px;
+  font-weight: bold;
   color: #ffffff;
   lines: 2;
 }
@@ -865,14 +887,15 @@ function buildDiag(state) {
 }
 
 .refresh-text {
-  font-size: 18px;
-  color: #8AB4E8;
+  font-size: 19px;
+  font-weight: bold;
+  color: #9ec8f0;
   text-align: center;
 }
 
 .status-note {
   font-size: 14px;
-  color: #6f6f6f;
+  color: #9a9a9a;
   margin-top: 16px;
   lines: 2;
 }
@@ -887,7 +910,7 @@ function buildDiag(state) {
 
 .dots {
   font-size: 15px;
-  color: #5a5a5a;
+  color: #8a8a8a;
   text-align: center;
 }
 </style>
