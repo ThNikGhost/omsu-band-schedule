@@ -1,0 +1,38 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+sign/
+
+# Server runtime data. Anchored, so server/tests/data/ (fixtures) still ships.
+/data/
+/server/data/
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Band app / plugin build artifacts
+node_modules/
+dist/
+build/
+*.rpk
+*.abp
+target/
+*.wasm
+
+# Personal brief: written as a private spec, not as documentation.
+# Its technical content lives in docs/DECISIONS.md, CLAUDE.md and server/README.md.
+docs/ORIGINAL_SPEC.md
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp

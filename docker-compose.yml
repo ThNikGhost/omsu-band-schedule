@@ -1,0 +1,23 @@
+services:
+  band-schedule:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: band-schedule:1.0.0
+    container_name: band-schedule
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - server/.env
+    ports:
+      # Plain HTTP. TLS and the domain are handled by your own reverse proxy.
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    tmpfs:
+      - /tmp
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

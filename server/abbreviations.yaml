@@ -1,0 +1,78 @@
+# Subject name abbreviations for the 212x520 watch screen.
+#
+# Applied when a response is built, in this order:
+#   exact -> regex (first match wins) -> words -> drop parentheses -> truncate
+# Word rules match case-insensitively and mirror the original leading case, so
+# one lowercase entry covers both "информации" -> "инф." and "Информации" -> "Инф.".
+#
+# Check the result against real data:
+#   uv run python -m app.cli check-names --group 5028
+# Every known subject must fit without the TRUNC marker.
+
+max_len: 32
+
+# The watch font may not have "…" — verify on the emulator in phase 2 and
+# switch to ".." if it renders as a box. See docs/DECISIONS.md.
+ellipsis: "…"
+
+# Optional type_work remapping for the `t` field. The API also emits ИПракт
+# and ПРК_Р, which are not obvious on a small screen.
+types:
+  ИПракт: "Практ"
+  ПРК_Р: "Практика"
+
+# Full-name replacements. Win over everything else.
+exact:
+  "Прикладная физическая культура и спорт (элективная дисциплина)": "Физкультура"
+  "Физическая культура и спорт (спортивное совершенствование)": "Физкультура"
+  "Физическая культура и спорт": "Физкультура"
+  "Теория вероятностей и математическая статистика": "Теорвер и матстат"
+  "Методы и средства криптографической защиты информации": "Криптозащита инф."
+  "Теоретико-числовые методы в криптографии": "Теор.-числ. методы крипт."
+  "Теория функций комплексного переменного": "ТФКП"
+  "Аппаратные средства вычислительной техники": "Аппаратные средства ВТ"
+  "Математическая логика и теория алгоритмов": "Матлогика и теория алг."
+  "Основы российской государственности": "Осн. рос. государств."
+  "Безопасность жизнедеятельности": "БЖД"
+
+# Ordered prefix rules; the first match wins and stops the chain.
+regex:
+  - ["^Производственная практика:.*", "Производств. практика"]
+  - ["^Учебная практика:.*", "Учебная практика"]
+
+# Per-word replacements. Keys are lowercase; case is mirrored from the source.
+# An empty value deletes the word.
+words:
+  технологии: "техн."
+  технология: "техн."
+  информации: "инф."
+  информационных: "инф."
+  информационной: "инф."
+  информационные: "инф."
+  информационная: "инф."
+  безопасности: "безоп."
+  безопасность: "безоп."
+  алгоритмы: "алг."
+  программирования: "программир."
+  построения: "постр."
+  защищенных: "защищ."
+  защищённых: "защищ."
+  управления: "упр."
+  математический: "мат."
+  математического: "мат."
+  дискретная: "дискр."
+  операционные: "опер."
+  операционных: "опер."
+  иностранный: "иностр."
+  электроника: "электрон."
+  дифференциальные: "дифф."
+  криптографические: "крипт."
+  язык: "яз."
+  системы: "сист."
+  системах: "сист."
+  системами: "сист."
+  вероятностей: "вероятн."
+  введение: "введ."
+  основы: "осн."
+
+drop_parenthesised: true
