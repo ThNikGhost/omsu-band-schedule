@@ -120,10 +120,6 @@ const VIEW_COUNT = VIEW_TITLES.length
 // чтобы «до перемены 12 мин» не врало, и не будит процессор попусту.
 const TICK_MS = 30000
 
-// Кэш держим на три недели: этого хватает с запасом, потому что вуз публикует
-// расписание примерно на десять дней вперёд.
-const KEEP_DAYS = 21
-
 // Поставьте true, чтобы прогнать экраны в эмуляторе на вшитом примере:
 // телефона там нет, а значит и синхронизации тоже.
 const DEMO_WITHOUT_PHONE = false
@@ -189,6 +185,8 @@ export default {
 
   storePayload(payload) {
     const self = this
+    // Вперёд объём ограничен сервером (параметр days), назад — этой чисткой,
+    // иначе кэш рос бы весь семестр.
     const trimmed = pruneBefore(payload, deviceMoment().iso)
     cache.writePayload(trimmed, function (ok, problem) {
       if (ok) {

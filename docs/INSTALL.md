@@ -81,13 +81,32 @@ cd band-app && npm install && npm run gen && npm run build
 ```
 → `band-app/dist/ru.omsu.bandschedule.debug.1.0.0.rpk` (~28 КБ)
 
+Для плагина нужен **Rust с таргетом `wasm32-wasip2`** на той машине, где собираете.
+Если его там нет, `build_dist.py` падает с `FileNotFoundError: 'cargo'`:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+```
+
+```bash
+source "$HOME/.cargo/env" && rustup target add wasm32-wasip2
+```
+
 ```bash
 cd astrobox-plugin && python3 scripts/build_dist.py --release --package
 ```
 → `astrobox-plugin/dist/Расписание ОмГУ.abp` (~178 КБ)
 
-На Windows плагин собирается **в WSL** — Smart App Control блокирует `cargo.exe`
-(см. `docs/DECISIONS.md`). Перекиньте оба файла на телефон любым способом.
+**Собирать плагин на сервере не обязательно** — это файл для телефона, серверу он не
+нужен. Если не хотите ставить полтора гигабайта тулчейна на NAS, соберите его на рабочей
+машине и скопируйте `.abp` на телефон напрямую.
+
+На Windows плагин собирается **только в WSL** — Smart App Control блокирует `cargo.exe`
+(см. `docs/DECISIONS.md`).
+
+> `npm install` в `band-app` ругается на уязвимости в зависимостях — это дерево
+> `aiot-toolkit` (старые eslint и glob). Оно участвует только в сборке и в `.rpk` не
+> попадает; трогать `npm audit fix` не нужно, он сломает тулчейн.
 
 ---
 
