@@ -1,0 +1,23 @@
+{
+  "name": "omsu-band-schedule-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OmSU class schedule for Xiaomi Smart Band 10 (Vela quick app)",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "gen": "node scripts/gen-shared.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "aiot start --watch",
+    "build": "aiot build",
+    "release": "aiot release"
+  },
+  "devDependencies": {
+    "@aiot-toolkit/jsc": "^1.0.3",
+    "aiot-toolkit": "^2.0.5",
+    "vitest": "^2.1.0"
+  }
+}

@@ -25,6 +25,9 @@ build/
 *.abp
 target/
 *.wasm
+# aiot build собирает во временный каталог рядом с проектом и переносит результат
+# обратно; если сборку прервать, каталог остаётся.
+/.temp_band-app/
 
 # Personal brief: written as a private spec, not as documentation.
 # Its technical content lives in docs/DECISIONS.md, CLAUDE.md and server/README.md.

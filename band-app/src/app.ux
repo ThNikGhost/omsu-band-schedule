@@ -1,0 +1,10 @@
+<script>
+export default {
+  onCreate() {
+    console.log('omsu-band-schedule: app created')
+  },
+  onDestroy() {
+    console.log('omsu-band-schedule: app destroyed')
+  }
+}
+</script>

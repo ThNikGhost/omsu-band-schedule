@@ -24,6 +24,14 @@ eservice.omsu.ru  --(раз в 3 ч)-->  server/  --(HTTP + токен)-->  astr
 ## Команды
 
 ```bash
+# band-app
+cd band-app && npm install && npm run gen
+npm test          # 113 тестов чистой логики, без эмулятора
+npm run build     # dist/ru.omsu.bandschedule.debug.1.0.0.rpk
+npx http-server preview -p 8123   # превью экранов в браузере
+```
+
+```bash
 # server
 cd server && uv sync
 uv run ruff check . && uv run ruff format --check .
@@ -44,6 +52,9 @@ docker compose up -d --build
 - `docs/ORIGINAL_SPEC.md` — исходное ТЗ, локальный файл вне репозитория; часть фактов в нём устарела
   (см. `docs/DECISIONS.md` → «Устаревшие источники»). При расхождении побеждает `DECISIONS.md`.
 - Сервер запускается строго в один воркер: снапшоты, rate limiter и планировщик живут в памяти.
+- В `band-app/src/common/*.js` **не должно быть ни одного `@system.*`** — это граница,
+  которая позволяет тестировать всю логику на Node без эмулятора.
+- `band-app/src/common/bells.js` и `mock.js` генерируются (`npm run gen`), править вручную нельзя.
 
 ## Ключевые факты
 

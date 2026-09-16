@@ -1,0 +1,527 @@
+<template>
+  <div class="page" @click="nextView">
+
+    <div class="header">
+      <text class="clock">{{ clock }}</text>
+      <text class="view-title">{{ viewTitle }}</text>
+      <text class="stale-mark" show="{{ stale }}">данные устарели</text>
+    </div>
+
+    <!-- Сейчас -->
+    <div class="body" if="{{ view === 0 }}">
+      <text class="headline">{{ now.headline }}</text>
+      <text class="detail" show="{{ now.detail }}">{{ now.detail }}</text>
+
+      <div class="card" if="{{ now.card }}">
+        <text class="card-label">{{ now.card.label }}</text>
+        <text class="card-name">{{ now.card.name }}</text>
+        <text class="card-meta">{{ now.card.time }}</text>
+        <text class="card-meta">{{ now.card.where }}</text>
+        <text class="card-meta">{{ now.card.teacher }}</text>
+      </div>
+    </div>
+
+    <!-- Сегодня / Далее: одна и та же вёрстка -->
+    <div class="body" if="{{ view === 1 || view === 2 }}">
+      <text class="day-subtitle">{{ day.subtitle }}</text>
+      <text class="empty" show="{{ day.empty }}">{{ day.emptyText }}</text>
+      <list class="scroll" show="{{ !day.empty }}">
+        <list-item
+          type="lesson"
+          class="row"
+          for="{{(rowIndex, row) in day.rows}}"
+          tid="key"
+          style="{{ row.style }}">
+          <div class="row-left">
+            <text class="row-pair">{{ row.pair }}</text>
+            <text class="row-start">{{ row.start }}</text>
+          </div>
+          <div class="row-main">
+            <text class="row-name">{{ row.name }}</text>
+            <text class="row-meta">{{ row.where }}</text>
+          </div>
+        </list-item>
+      </list>
+    </div>
+
+    <!-- Звонки -->
+    <div class="body" if="{{ view === 3 }}">
+      <list class="scroll">
+        <list-item
+          type="bell"
+          class="bell-row"
+          for="{{(bellIndex, bell) in bells.rows}}"
+          tid="key"
+          style="{{ bell.style }}">
+          <text class="bell-pair">{{ bell.label }}</text>
+          <div class="bell-main">
+            <text class="bell-time">{{ bell.time }}</text>
+            <text class="bell-halves" show="{{ bell.halvesText }}">{{ bell.halvesText }}</text>
+          </div>
+        </list-item>
+      </list>
+    </div>
+
+    <!-- Состояние -->
+    <div class="body status-body" if="{{ view === 4 }}">
+      <text class="status-line">Группа</text>
+      <text class="status-value">{{ status.group }}</text>
+      <text class="status-line">Обновлено</text>
+      <text class="status-value">{{ status.updated }}</text>
+      <text class="status-line">Данных</text>
+      <text class="status-value">{{ status.volume }}</text>
+      <text class="status-line">Связь</text>
+      <text class="status-value">{{ status.link }}</text>
+      <text class="status-note">{{ status.note }}</text>
+    </div>
+
+    <div class="footer">
+      <text class="dots">{{ dots }}</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import bellsData from '../../common/bells.js'
+import mockPayload from '../../common/mock.js'
+import { orDash, hhmm, timestampLabel } from '../../common/format.js'
+import { countLessons, isStale } from '../../common/schedule.js'
+import { bellsView, nextDayView, nowView, todayView } from '../../common/viewmodel.js'
+
+const VIEW_TITLES = ['Сейчас', 'Сегодня', 'Далее', 'Звонки', 'Состояние']
+const VIEW_COUNT = VIEW_TITLES.length
+
+// Пока экран открыт, пересчитываем состояние раз в 30 секунд: этого хватает,
+// чтобы «до перемены 12 мин» не врало, и не будит процессор попусту.
+const TICK_MS = 30000
+
+export default {
+  private: {
+    view: 0,
+    viewTitle: VIEW_TITLES[0],
+    dots: '',
+    clock: '--:--',
+    stale: false,
+    now: { headline: '', detail: '', card: null },
+    day: { subtitle: '', rows: [], empty: true, emptyText: '' },
+    bells: { rows: [] },
+    status: { group: '—', updated: '—', volume: '—', link: '—', note: '' }
+  },
+
+  onInit() {
+    this.payload = loadPayload()
+    this.timer = null
+  },
+
+  onReady() {
+    this.refresh()
+  },
+
+  onShow() {
+    this.refresh()
+    this.startTimer()
+  },
+
+  onHide() {
+    this.stopTimer()
+  },
+
+  onDestroy() {
+    this.stopTimer()
+  },
+
+  startTimer() {
+    this.stopTimer()
+    const self = this
+    this.timer = setInterval(function () {
+      self.refresh()
+    }, TICK_MS)
+  },
+
+  stopTimer() {
+    if (this.timer) {
+      clearInterval(this.timer)
+      this.timer = null
+    }
+  },
+
+  nextView() {
+    this.view = (this.view + 1) % VIEW_COUNT
+    this.refresh()
+  },
+
+  refresh() {
+    const moment = deviceMoment()
+    const payload = this.payload
+
+    this.clock = hhmm(moment.minutes)
+    this.viewTitle = VIEW_TITLES[this.view]
+    this.dots = dotsFor(this.view)
+    this.stale = isStale(payload, moment.ms, 24)
+
+    if (this.view === 0) {
+      this.now = decorateNow(nowView(payload, bellsData, moment.iso, moment.minutes))
+    } else if (this.view === 1) {
+      this.day = decorateDay(todayView(payload, bellsData, moment.iso, moment.minutes))
+    } else if (this.view === 2) {
+      this.day = decorateDay(nextDayView(payload, bellsData, moment.iso))
+    } else if (this.view === 3) {
+      this.bells = decorateBells(bellsView(bellsData, moment.minutes, todayLessons(payload, moment.iso)))
+    } else {
+      this.status = buildStatus(payload, moment)
+    }
+  }
+}
+
+/**
+ * Фаза 2: данные берутся из вшитого примера. В фазе 4 здесь появится чтение
+ * кэша из @system.storage, а весь остальной код останется прежним.
+ */
+function loadPayload() {
+  return mockPayload
+}
+
+/** Локальное время устройства. Браслет живёт в той же зоне, что и вуз. */
+function deviceMoment() {
+  const date = new Date()
+  return {
+    ms: date.getTime(),
+    minutes: date.getHours() * 60 + date.getMinutes(),
+    iso: isoDate(date)
+  }
+}
+
+function isoDate(date) {
+  const month = date.getMonth() + 1
+  const day = date.getDate()
+  return date.getFullYear() + '-' + two(month) + '-' + two(day)
+}
+
+function two(value) {
+  return value < 10 ? '0' + value : String(value)
+}
+
+function dotsFor(view) {
+  let out = ''
+  for (let i = 0; i < VIEW_COUNT; i += 1) {
+    out += i === view ? '●' : '·'
+  }
+  return out
+}
+
+function todayLessons(payload, iso) {
+  const view = todayView(payload, bellsData, iso, null)
+  const lessons = []
+  for (let i = 0; i < view.rows.length; i += 1) {
+    lessons.push({ p: view.rows[i].pair })
+  }
+  return lessons
+}
+
+/** Аудитория и тип занятия в одну строку, чтобы не плодить пустые строки. */
+function whereLine(room, type) {
+  const parts = []
+  if (room && room !== '—') {
+    parts.push(room)
+  }
+  if (type) {
+    parts.push(type)
+  }
+  return parts.length ? parts.join(' · ') : '—'
+}
+
+function decorateNow(view) {
+  if (view.card) {
+    view.card.where = whereLine(view.card.room, view.card.type)
+    view.card.teacher = orDash(view.card.teacher)
+  }
+  return view
+}
+
+// Динамических классов в quick app нет — подсветку задаём инлайновым стилем.
+const STYLE_CURRENT = 'opacity: 1;'
+const STYLE_PAST = 'opacity: 0.35;'
+const STYLE_NORMAL = 'opacity: 0.75;'
+
+function decorateDay(view) {
+  for (let i = 0; i < view.rows.length; i += 1) {
+    const row = view.rows[i]
+    row.where = whereLine(row.room, row.type)
+    row.style = row.current ? STYLE_CURRENT : row.past ? STYLE_PAST : STYLE_NORMAL
+  }
+  if (!view.emptyText) {
+    view.emptyText = 'Пар нет'
+  }
+  return view
+}
+
+function decorateBells(view) {
+  for (let i = 0; i < view.rows.length; i += 1) {
+    const row = view.rows[i]
+    row.halvesText = row.halves.join('   ')
+    // Большой перерыв идёт без номера — вместо цифры ставим точку.
+    row.label = row.kind === 'break' ? '·' : String(row.pair)
+    row.style = row.current ? STYLE_CURRENT : row.scheduled ? STYLE_NORMAL : STYLE_PAST
+  }
+  return view
+}
+
+function buildStatus(payload, moment) {
+  if (!payload) {
+    return {
+      group: '—',
+      updated: '—',
+      volume: '—',
+      link: 'нет данных',
+      note: 'Откройте AstroBox на телефоне'
+    }
+  }
+  const days = payload.days ? payload.days.length : 0
+  return {
+    group: orDash(payload.g),
+    updated: timestampLabel(payload.src),
+    volume: days + ' дн. · ' + countLessons(payload) + ' пар',
+    link: isStale(payload, moment.ms, 24) ? 'данные устарели' : 'данные свежие',
+    note: 'Фаза 2: демонстрационные данные'
+  }
+}
+</script>
+
+<style>
+.page {
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #000000;
+  padding-top: 14px;
+  padding-bottom: 10px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.header {
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.clock {
+  font-size: 30px;
+  color: #ffffff;
+  text-align: center;
+}
+
+.view-title {
+  font-size: 14px;
+  color: #7a7a7a;
+  text-align: center;
+  margin-top: 2px;
+}
+
+.stale-mark {
+  font-size: 12px;
+  color: #d08a3a;
+  text-align: center;
+  margin-top: 2px;
+}
+
+.body {
+  flex-direction: column;
+  width: 100%;
+  flex-grow: 1;
+  margin-top: 10px;
+}
+
+/* --- Сейчас --- */
+
+.headline {
+  font-size: 19px;
+  color: #ffffff;
+  text-align: center;
+  lines: 3;
+}
+
+.detail {
+  font-size: 15px;
+  color: #9a9a9a;
+  text-align: center;
+  margin-top: 4px;
+  lines: 2;
+}
+
+.card {
+  flex-direction: column;
+  width: 100%;
+  margin-top: 14px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-left: 10px;
+  padding-right: 10px;
+  border-radius: 14px;
+  background-color: #141414;
+}
+
+.card-label {
+  font-size: 12px;
+  color: #6f6f6f;
+}
+
+.card-name {
+  font-size: 18px;
+  color: #ffffff;
+  margin-top: 2px;
+  lines: 3;
+}
+
+.card-meta {
+  font-size: 14px;
+  color: #9a9a9a;
+  margin-top: 2px;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+/* --- Сегодня / Далее --- */
+
+.day-subtitle {
+  font-size: 14px;
+  color: #7a7a7a;
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+.empty {
+  font-size: 17px;
+  color: #9a9a9a;
+  text-align: center;
+  margin-top: 40px;
+}
+
+/* Список прокручивается: у дня бывает до восьми пар, а с двумя подгруппами
+   строк ещё больше, и в 520 px они не помещаются. */
+.scroll {
+  flex-direction: column;
+  width: 100%;
+  flex-grow: 1;
+}
+
+.row {
+  flex-direction: row;
+  width: 100%;
+  margin-bottom: 6px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  padding-left: 7px;
+  padding-right: 7px;
+  border-radius: 10px;
+  background-color: #121212;
+}
+
+.row-left {
+  flex-direction: column;
+  width: 40px;
+  margin-right: 6px;
+}
+
+.row-pair {
+  font-size: 19px;
+  color: #ffffff;
+  text-align: center;
+}
+
+.row-start {
+  font-size: 11px;
+  color: #7a7a7a;
+  text-align: center;
+}
+
+.row-main {
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.row-name {
+  font-size: 15px;
+  color: #ffffff;
+  lines: 2;
+  text-overflow: ellipsis;
+}
+
+.row-meta {
+  font-size: 12px;
+  color: #8a8a8a;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+/* --- Звонки --- */
+
+.bell-row {
+  flex-direction: row;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.bell-pair {
+  font-size: 17px;
+  color: #ffffff;
+  width: 20px;
+  text-align: center;
+  margin-right: 6px;
+}
+
+.bell-main {
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.bell-time {
+  font-size: 15px;
+  color: #ffffff;
+}
+
+.bell-halves {
+  font-size: 12px;
+  color: #7a7a7a;
+}
+
+/* --- Состояние --- */
+
+.status-body {
+  flex-grow: 1;
+}
+
+.status-line {
+  font-size: 12px;
+  color: #6f6f6f;
+  margin-top: 8px;
+}
+
+.status-value {
+  font-size: 16px;
+  color: #ffffff;
+  lines: 2;
+}
+
+.status-note {
+  font-size: 12px;
+  color: #6f6f6f;
+  margin-top: 16px;
+  lines: 2;
+}
+
+/* --- Низ --- */
+
+.footer {
+  flex-direction: row;
+  justify-content: center;
+  width: 100%;
+}
+
+.dots {
+  font-size: 13px;
+  color: #5a5a5a;
+  text-align: center;
+  letter-spacing: 3px;
+}
+</style>

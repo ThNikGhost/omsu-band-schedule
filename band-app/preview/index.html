@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Расписание — превью экранов</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    padding: 20px;
+    background: #17181a;
+    color: #ddd;
+    font-family: "Segoe UI", system-ui, sans-serif;
+  }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+  .warn {
+    font-size: 12px; color: #d08a3a; margin: 0 0 16px; max-width: 900px; line-height: 1.5;
+  }
+  .controls {
+    display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 20px; font-size: 13px;
+  }
+  .controls label { display: flex; gap: 8px; align-items: center; }
+  input[type=range] { width: 320px; }
+  select, button {
+    background: #26282b; color: #ddd; border: 1px solid #3a3d41;
+    border-radius: 6px; padding: 5px 9px; font-size: 13px;
+  }
+  button { cursor: pointer; }
+  .screens { display: flex; gap: 18px; flex-wrap: wrap; }
+  .screen-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .screen-name { font-size: 12px; color: #888; text-align: center; }
+
+  /* 212x520 — физический экран Smart Band 10 */
+  .band {
+    width: 212px; height: 520px;
+    background: #000; border-radius: 26px;
+    outline: 3px solid #303336;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    padding: 14px 12px 10px;
+    box-sizing: border-box;
+  }
+  .band * { box-sizing: border-box; }
+
+  /* Ниже — те же значения, что в src/pages/index/index.ux */
+  .header { display: flex; flex-direction: column; align-items: center; width: 100%; }
+  .clock { font-size: 30px; color: #fff; text-align: center; line-height: 1.1; }
+  .view-title { font-size: 14px; color: #7a7a7a; margin-top: 2px; }
+  .stale-mark { font-size: 12px; color: #d08a3a; margin-top: 2px; }
+  .bd { display: flex; flex-direction: column; width: 100%; flex-grow: 1; margin-top: 10px; overflow: hidden; }
+  .headline { font-size: 19px; color: #fff; text-align: center; line-height: 1.25; }
+  .detail { font-size: 15px; color: #9a9a9a; text-align: center; margin-top: 4px; }
+  .card {
+    display: flex; flex-direction: column; width: 100%; margin-top: 14px;
+    padding: 10px; border-radius: 14px; background: #141414;
+  }
+  .card-label { font-size: 12px; color: #6f6f6f; }
+  .card-name { font-size: 18px; color: #fff; margin-top: 2px; line-height: 1.2; }
+  .card-meta { font-size: 14px; color: #9a9a9a; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .day-subtitle { font-size: 14px; color: #7a7a7a; text-align: center; margin-bottom: 6px; }
+  .empty { font-size: 17px; color: #9a9a9a; text-align: center; margin-top: 40px; }
+  .scroll { display: flex; flex-direction: column; width: 100%; flex-grow: 1; overflow-y: auto; }
+  .scroll::-webkit-scrollbar { width: 3px; }
+  .scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  .row {
+    display: flex; flex-direction: row; width: 100%; margin-bottom: 6px;
+    padding: 5px 7px; border-radius: 10px; background: #121212; flex: none;
+  }
+  .row-left { display: flex; flex-direction: column; width: 40px; margin-right: 6px; flex: none; }
+  .row-pair { font-size: 19px; color: #fff; text-align: center; line-height: 1.1; }
+  .row-start { font-size: 11px; color: #7a7a7a; text-align: center; }
+  .row-main { display: flex; flex-direction: column; flex-grow: 1; min-width: 0; }
+  .row-name { font-size: 15px; color: #fff; line-height: 1.2; }
+  .row-meta { font-size: 12px; color: #8a8a8a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bell-row { display: flex; flex-direction: row; width: 100%; margin-bottom: 6px; flex: none; }
+  .bell-pair { font-size: 17px; color: #fff; width: 20px; text-align: center; margin-right: 6px; flex: none; }
+  .bell-main { display: flex; flex-direction: column; flex-grow: 1; }
+  .bell-time { font-size: 15px; color: #fff; }
+  .bell-halves { font-size: 12px; color: #7a7a7a; }
+  .status-line { font-size: 12px; color: #6f6f6f; margin-top: 8px; }
+  .status-value { font-size: 16px; color: #fff; }
+  .status-note { font-size: 12px; color: #6f6f6f; margin-top: 16px; }
+  .footer { display: flex; justify-content: center; width: 100%; }
+  .dots { font-size: 13px; color: #5a5a5a; letter-spacing: 3px; }
+  .overflow { outline: 2px solid #c0392b !important; }
+  .overflow-note { font-size: 11px; color: #e74c3c; text-align: center; }
+  .band:not(.overflow) + .overflow-note, .screen-wrap .overflow-note:not(:empty) { color: #6f9; }
+</style>
+</head>
+<body>
+<h1>Расписание ОмГУ — превью экранов браслета</h1>
+<p class="warn">
+  Это <b>приближение в браузере</b>, а не эмулятор Vela. Оно использует те же модули
+  <code>src/common/*.js</code> и те же размеры, что <code>index.ux</code>, поэтому годится для проверки
+  текстов, переносов и того, влезает ли содержимое в 212×520. Итоговый рендер на браслете
+  надо смотреть в эмуляторе AIoT-IDE — шрифт и метрики строк там свои.
+  Красная рамка = содержимое не поместилось по высоте.
+</p>
+
+<div class="controls">
+  <label>День
+    <select id="day"></select>
+  </label>
+  <label>Время <span id="time-label">09:00</span>
+    <input type="range" id="time" min="0" max="1439" step="5" value="540">
+  </label>
+  <button id="preset-lesson">идёт пара</button>
+  <button id="preset-halfbreak">перерыв внутри пары</button>
+  <button id="preset-bigbreak">большой перерыв</button>
+  <button id="preset-after">после пар</button>
+  <button id="preset-empty">день без пар</button>
+</div>
+
+<div class="screens" id="screens"></div>
+
+<script type="module">
+import bells from '../src/common/bells.js'
+import mock from '../src/common/mock.js'
+import { orDash, hhmm, timestampLabel } from '../src/common/format.js'
+import { countLessons, isStale } from '../src/common/schedule.js'
+import { bellsView, nextDayView, nowView, todayView } from '../src/common/viewmodel.js'
+
+const VIEW_TITLES = ['Сейчас', 'Сегодня', 'Далее', 'Звонки', 'Состояние']
+
+const daySelect = document.getElementById('day')
+const timeInput = document.getElementById('time')
+const timeLabel = document.getElementById('time-label')
+const screens = document.getElementById('screens')
+
+const days = mock.days.map((d) => d.d)
+// Пустой день, которого нет в выборке — чтобы проверить состояние «пар нет».
+const allDays = days.concat(['2026-09-20'])
+for (const d of allDays) {
+  const option = document.createElement('option')
+  option.value = d
+  option.textContent = d + (days.includes(d) ? '' : '  (пар нет)')
+  daySelect.appendChild(option)
+}
+
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+
+function whereLine(room, type) {
+  const parts = []
+  if (room && room !== '—') parts.push(room)
+  if (type) parts.push(type)
+  return parts.length ? parts.join(' · ') : '—'
+}
+
+const STYLE = { current: 'opacity:1', past: 'opacity:.35', normal: 'opacity:.75' }
+
+function dots(view) {
+  return VIEW_TITLES.map((_, i) => (i === view ? '●' : '·')).join('')
+}
+
+function renderNow(iso, minutes) {
+  const v = nowView(mock, bells, iso, minutes)
+  let html = `<div class="headline">${esc(v.headline)}</div>`
+  if (v.detail) html += `<div class="detail">${esc(v.detail)}</div>`
+  if (v.card) {
+    html += `<div class="card">
+      <div class="card-label">${esc(v.card.label)}</div>
+      <div class="card-name">${esc(v.card.name)}</div>
+      <div class="card-meta">${esc(v.card.time)}</div>
+      <div class="card-meta">${esc(whereLine(v.card.room, v.card.type))}</div>
+      <div class="card-meta">${esc(orDash(v.card.teacher))}</div>
+    </div>`
+  }
+  return html
+}
+
+function renderDay(v) {
+  let html = `<div class="day-subtitle">${esc(v.subtitle)}</div>`
+  if (v.empty) return html + `<div class="empty">${esc(v.emptyText || 'Пар нет')}</div>`
+  html += '<div class="scroll">'
+  for (const row of v.rows) {
+    const style = row.current ? STYLE.current : row.past ? STYLE.past : STYLE.normal
+    html += `<div class="row" style="${style}">
+      <div class="row-left">
+        <div class="row-pair">${row.pair}</div>
+        <div class="row-start">${esc(row.start)}</div>
+      </div>
+      <div class="row-main">
+        <div class="row-name">${esc(row.name)}</div>
+        <div class="row-meta">${esc(whereLine(row.room, row.type))}</div>
+      </div>
+    </div>`
+  }
+  return html + '</div>'
+}
+
+function renderBells(minutes, lessons) {
+  const v = bellsView(bells, minutes, lessons)
+  let html = '<div class="scroll">'
+  for (const row of v.rows) {
+    const style = row.current ? STYLE.current : row.scheduled ? STYLE.normal : STYLE.past
+    const label = row.kind === 'break' ? '·' : row.pair
+    html += `<div class="bell-row" style="${style}">
+      <div class="bell-pair">${label}</div>
+      <div class="bell-main">
+        <div class="bell-time">${esc(row.time)}</div>
+        ${row.halves.length ? `<div class="bell-halves">${esc(row.halves.join('   '))}</div>` : ''}
+        ${row.kind === 'break' ? '<div class="bell-halves">Большой перерыв</div>' : ''}
+      </div>
+    </div>`
+  }
+  return html + '</div>'
+}
+
+function renderStatus(nowMs) {
+  const stale = isStale(mock, nowMs, 24)
+  const rows = [
+    ['Группа', orDash(mock.g)],
+    ['Обновлено', timestampLabel(mock.src)],
+    ['Данных', mock.days.length + ' дн. · ' + countLessons(mock) + ' пар'],
+    ['Связь', stale ? 'данные устарели' : 'данные свежие']
+  ]
+  return rows.map(([k, val]) =>
+    `<div class="status-line">${esc(k)}</div><div class="status-value">${esc(val)}</div>`
+  ).join('') + `<div class="status-note">Фаза 2: демонстрационные данные</div>`
+}
+
+function render() {
+  const iso = daySelect.value
+  const minutes = Number(timeInput.value)
+  timeLabel.textContent = hhmm(minutes)
+
+  const todayLessons = todayView(mock, bells, iso, null).rows.map((r) => ({ p: r.pair }))
+  // «Сейчас» и «Сегодня» смотрят на выбранное время; у остальных экранов
+  // времени не спрашивают, кроме подсветки в «Звонках».
+  const nowMs = Date.parse(mock.src)
+  const stale = isStale(mock, nowMs, 24)
+
+  const bodies = [
+    renderNow(iso, minutes),
+    renderDay(todayView(mock, bells, iso, minutes)),
+    renderDay(nextDayView(mock, bells, iso)),
+    renderBells(minutes, todayLessons),
+    renderStatus(nowMs)
+  ]
+
+  screens.innerHTML = bodies.map((body, i) => `
+    <div class="screen-wrap">
+      <div class="screen-name">${esc(VIEW_TITLES[i])}</div>
+      <div class="band" data-i="${i}">
+        <div class="header">
+          <div class="clock">${hhmm(minutes)}</div>
+          <div class="view-title">${esc(VIEW_TITLES[i])}</div>
+          ${stale ? '<div class="stale-mark">данные устарели</div>' : ''}
+        </div>
+        <div class="bd">${body}</div>
+        <div class="footer"><div class="dots">${dots(i)}</div></div>
+      </div>
+      <div class="overflow-note" data-note="${i}"></div>
+    </div>`).join('')
+
+  // Помечаем экраны, где содержимое не влезло в 520 px.
+  for (const band of screens.querySelectorAll('.band')) {
+    const bd = band.querySelector('.bd')
+    const list = bd.querySelector('.scroll')
+    // Список прокручивается — это нормально; плохо, когда не влезает то,
+    // что прокрутки не имеет.
+    const overflow = list
+      ? bd.scrollHeight > bd.clientHeight + 1
+      : bd.scrollHeight > bd.clientHeight + 1
+    const hidden = list ? Math.max(0, list.scrollHeight - list.clientHeight) : 0
+    band.classList.toggle('overflow', overflow)
+    const note = screens.querySelector(`[data-note="${band.dataset.i}"]`)
+    note.textContent = overflow
+      ? `не влезает: +${bd.scrollHeight - bd.clientHeight}px`
+      : hidden > 0
+        ? `прокрутка: ещё ${hidden}px`
+        : ''
+  }
+}
+
+const presets = {
+  'preset-lesson': ['2026-09-16', 9 * 60],
+  'preset-halfbreak': ['2026-09-16', 9 * 60 + 32],
+  'preset-bigbreak': ['2026-09-16', 12 * 60 + 20],
+  'preset-after': ['2026-09-16', 20 * 60],
+  'preset-empty': ['2026-09-20', 12 * 60]
+}
+for (const [id, [iso, minutes]] of Object.entries(presets)) {
+  document.getElementById(id).addEventListener('click', () => {
+    daySelect.value = iso
+    timeInput.value = String(minutes)
+    render()
+  })
+}
+
+daySelect.addEventListener('change', render)
+timeInput.addEventListener('input', render)
+daySelect.value = '2026-09-16'
+render()
+</script>
+</body>
+</html>
