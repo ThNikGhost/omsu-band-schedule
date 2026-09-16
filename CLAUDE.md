@@ -17,7 +17,7 @@ eservice.omsu.ru  --(раз в 3 ч)-->  server/  --(HTTP + токен)-->  astr
 | `server/` | FastAPI-сервер: тянет API вуза, нормализует, отдаёт компактный JSON и ICS |
 | `shared/` | Контракт между компонентами: `schema.json`, `example.json`, `bells.json` |
 | `band-app/` | Vela quick app для браслета (`.rpk`), package `ru.omsu.bandschedule` |
-| `astrobox-plugin/` | Плагин AstroBox v2: Rust → WebAssembly (`wasm32-wasip2`), пакет `.abp` |
+| `astrobox-plugin/` | Плагин AstroBox v2: Rust → WebAssembly (`wasm32-wasip2`), пакет `.abp`. Собирается в WSL — Smart App Control блокирует cargo.exe |
 | `reference/` | **Только чтение.** Код старого проекта StudyHelper, источник проверенных решений |
 | `docs/` | `DECISIONS.md` — журнал решений и ограничений; `ORIGINAL_SPEC.md` — исходное ТЗ |
 
@@ -26,7 +26,7 @@ eservice.omsu.ru  --(раз в 3 ч)-->  server/  --(HTTP + токен)-->  astr
 ```bash
 # band-app
 cd band-app && npm install && npm run gen
-npm test          # 113 тестов чистой логики, без эмулятора
+npm test          # 151 тест чистой логики, без эмулятора
 npm run build     # dist/ru.omsu.bandschedule.debug.1.0.0.rpk
 npx http-server preview -p 8123   # превью экранов в браузере
 ```

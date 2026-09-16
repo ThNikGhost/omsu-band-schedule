@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "start": "aiot start --watch",
     "build": "aiot build",
-    "release": "aiot release"
+    "release": "aiot release",
+    "gen:frames": "echo \"Запускать в WSL: cd ../astrobox-plugin && cargo run -p omsu-sync-core --example emit_frames --target x86_64-unknown-linux-gnu\""
   },
   "devDependencies": {
     "@aiot-toolkit/jsc": "^1.0.3",

@@ -1,5 +1,13 @@
 <template>
-  <div class="page" @click="nextView">
+  <!--
+    Тап переключает раздел, долгое нажатие запрашивает расписание. Долгое
+    нажатие продублировано на всю страницу намеренно: модификаторов вроде
+    @click.stop в этом компиляторе нет, поэтому неизвестно, всплывёт ли тап
+    по кнопке «Обновить» до обработчика страницы. Оба исхода нормальны —
+    либо просто синхронизация, либо синхронизация и переход на «Сейчас», —
+    но жест, который точно ни с чем не конфликтует, тоже нужен.
+  -->
+  <div class="page" @click="nextView" @longpress="requestSync">
 
     <div class="header">
       <text class="clock">{{ clock }}</text>
@@ -7,8 +15,18 @@
       <text class="stale-mark" show="{{ stale }}">данные устарели</text>
     </div>
 
+    <!-- Нет данных вообще -->
+    <div class="body" if="{{ !hasData }}">
+      <text class="headline">Нет расписания</text>
+      <text class="detail">Откройте AstroBox на телефоне</text>
+      <div class="refresh" @click="requestSync">
+        <text class="refresh-text">{{ status.action }}</text>
+      </div>
+      <text class="detail">{{ status.link }}</text>
+    </div>
+
     <!-- Сейчас -->
-    <div class="body" if="{{ view === 0 }}">
+    <div class="body" if="{{ hasData && view === 0 }}">
       <text class="headline">{{ now.headline }}</text>
       <text class="detail" show="{{ now.detail }}">{{ now.detail }}</text>
 
@@ -22,7 +40,7 @@
     </div>
 
     <!-- Сегодня / Далее: одна и та же вёрстка -->
-    <div class="body" if="{{ view === 1 || view === 2 }}">
+    <div class="body" if="{{ hasData && (view === 1 || view === 2) }}">
       <text class="day-subtitle">{{ day.subtitle }}</text>
       <text class="empty" show="{{ day.empty }}">{{ day.emptyText }}</text>
       <list class="scroll" show="{{ !day.empty }}">
@@ -45,7 +63,7 @@
     </div>
 
     <!-- Звонки -->
-    <div class="body" if="{{ view === 3 }}">
+    <div class="body" if="{{ hasData && view === 3 }}">
       <list class="scroll">
         <list-item
           type="bell"
@@ -63,7 +81,7 @@
     </div>
 
     <!-- Состояние -->
-    <div class="body status-body" if="{{ view === 4 }}">
+    <div class="body status-body" if="{{ hasData && view === 4 }}">
       <text class="status-line">Группа</text>
       <text class="status-value">{{ status.group }}</text>
       <text class="status-line">Обновлено</text>
@@ -72,7 +90,11 @@
       <text class="status-value">{{ status.volume }}</text>
       <text class="status-line">Связь</text>
       <text class="status-value">{{ status.link }}</text>
+      <div class="refresh" @click="requestSync">
+        <text class="refresh-text">{{ status.action }}</text>
+      </div>
       <text class="status-note">{{ status.note }}</text>
+      <text class="status-note">Долгое нажатие — запросить расписание</text>
     </div>
 
     <div class="footer">
@@ -85,8 +107,11 @@
 import bellsData from '../../common/bells.js'
 import mockPayload from '../../common/mock.js'
 import { orDash, hhmm, timestampLabel } from '../../common/format.js'
-import { countLessons, isStale } from '../../common/schedule.js'
+import { countLessons, isStale, pruneBefore } from '../../common/schedule.js'
 import { bellsView, nextDayView, nowView, todayView } from '../../common/viewmodel.js'
+import { createReceiver, hasTimedOut, step, syncRequest } from '../../common/link.js'
+import * as cache from '../../device/storage.js'
+import * as wire from '../../device/link.js'
 
 const VIEW_TITLES = ['Сейчас', 'Сегодня', 'Далее', 'Звонки', 'Состояние']
 const VIEW_COUNT = VIEW_TITLES.length
@@ -95,6 +120,14 @@ const VIEW_COUNT = VIEW_TITLES.length
 // чтобы «до перемены 12 мин» не врало, и не будит процессор попусту.
 const TICK_MS = 30000
 
+// Кэш держим на три недели: этого хватает с запасом, потому что вуз публикует
+// расписание примерно на десять дней вперёд.
+const KEEP_DAYS = 21
+
+// Поставьте true, чтобы прогнать экраны в эмуляторе на вшитом примере:
+// телефона там нет, а значит и синхронизации тоже.
+const DEMO_WITHOUT_PHONE = false
+
 export default {
   private: {
     view: 0,
@@ -102,15 +135,21 @@ export default {
     dots: '',
     clock: '--:--',
     stale: false,
+    hasData: false,
     now: { headline: '', detail: '', card: null },
     day: { subtitle: '', rows: [], empty: true, emptyText: '' },
     bells: { rows: [] },
-    status: { group: '—', updated: '—', volume: '—', link: '—', note: '' }
+    status: { group: '—', updated: '—', volume: '—', link: '—', note: '', action: 'Обновить' }
   },
 
   onInit() {
-    this.payload = loadPayload()
+    this.payload = null
     this.timer = null
+    this.connection = null
+    this.receiver = createReceiver()
+    this.linkState = wire.LINK.UNKNOWN
+    this.lastError = null
+    this.loadCache()
   },
 
   onReady() {
@@ -118,8 +157,12 @@ export default {
   },
 
   onShow() {
+    this.openLink()
     this.refresh()
     this.startTimer()
+    // Спрашиваем расписание при каждом открытии: если ничего не изменилось,
+    // телефон ответит up_to_date и по BLE ничего не поедет.
+    this.requestSync()
   },
 
   onHide() {
@@ -128,6 +171,112 @@ export default {
 
   onDestroy() {
     this.stopTimer()
+  },
+
+  // ------------------------------------------------------------ данные
+
+  loadCache() {
+    const self = this
+    cache.readPayload(function (payload) {
+      if (payload) {
+        self.payload = payload
+      } else if (DEMO_WITHOUT_PHONE) {
+        self.payload = mockPayload
+      }
+      self.refresh()
+    })
+  },
+
+  storePayload(payload) {
+    const self = this
+    const trimmed = pruneBefore(payload, deviceMoment().iso)
+    cache.writePayload(trimmed, function (ok, problem) {
+      if (ok) {
+        self.payload = trimmed
+        self.lastError = null
+        cache.writeMeta({ at: Date.now(), h: trimmed.h })
+      } else {
+        // Старый кэш остался нетронутым — показываем его дальше.
+        self.lastError = problem || 'не удалось сохранить'
+      }
+      self.refresh()
+    })
+  },
+
+  // ------------------------------------------------------------- связь
+
+  openLink() {
+    if (this.connection) {
+      this.updateLinkState()
+      return
+    }
+    const self = this
+    this.connection = wire.open({
+      onOpen() {
+        self.linkState = wire.LINK.CONNECTED
+        self.refresh()
+      },
+      onClose() {
+        self.linkState = wire.LINK.DISCONNECTED
+        self.refresh()
+      },
+      onError() {
+        self.linkState = wire.LINK.DISCONNECTED
+        self.refresh()
+      },
+      onMessage(data) {
+        self.onWireMessage(data)
+      }
+    })
+    this.updateLinkState()
+  },
+
+  updateLinkState() {
+    const self = this
+    wire.checkState(this.connection, function (state) {
+      self.linkState = state
+      self.refresh()
+    })
+  },
+
+  requestSync() {
+    if (!this.connection) {
+      this.openLink()
+    }
+    const have = this.payload && this.payload.h ? this.payload.h : null
+    const self = this
+    wire.send(this.connection, syncRequest(have), function (ok, code) {
+      if (!ok) {
+        self.lastError = 'телефон недоступен'
+        self.linkState = wire.LINK.DISCONNECTED
+        console.warn('sync_req не ушёл: ' + code)
+        self.refresh()
+      }
+    })
+  },
+
+  onWireMessage(data) {
+    const outcome = step(this.receiver, data, Date.now())
+    this.receiver = outcome.state
+
+    if (outcome.log) {
+      console.log('link: ' + outcome.log)
+    }
+    for (let i = 0; i < outcome.send.length; i += 1) {
+      wire.send(this.connection, outcome.send[i], null)
+    }
+    if (outcome.error) {
+      this.lastError = outcome.error
+    }
+    if (outcome.status === 'up_to_date') {
+      this.lastError = null
+      cache.writeMeta({ at: Date.now(), h: this.payload ? this.payload.h : null })
+    }
+    if (outcome.apply) {
+      this.storePayload(outcome.apply)
+      return
+    }
+    this.refresh()
   },
 
   startTimer() {
@@ -154,6 +303,13 @@ export default {
     const moment = deviceMoment()
     const payload = this.payload
 
+    // Оборвавшуюся передачу бросаем и остаёмся на старом кэше.
+    if (hasTimedOut(this.receiver, Date.now())) {
+      this.receiver = createReceiver()
+      this.lastError = 'передача оборвалась'
+    }
+
+    this.hasData = !!payload
     this.clock = hhmm(moment.minutes)
     this.viewTitle = VIEW_TITLES[this.view]
     this.dots = dotsFor(this.view)
@@ -168,17 +324,14 @@ export default {
     } else if (this.view === 3) {
       this.bells = decorateBells(bellsView(bellsData, moment.minutes, todayLessons(payload, moment.iso)))
     } else {
-      this.status = buildStatus(payload, moment)
+      this.status = buildStatus(payload, moment, this.linkState, this.lastError)
+    }
+
+    // Экран «нет данных» тоже показывает кнопку и состояние связи.
+    if (!payload) {
+      this.status = buildStatus(null, moment, this.linkState, this.lastError)
     }
   }
-}
-
-/**
- * Фаза 2: данные берутся из вшитого примера. В фазе 4 здесь появится чтение
- * кэша из @system.storage, а весь остальной код останется прежним.
- */
-function loadPayload() {
-  return mockPayload
 }
 
 /** Локальное время устройства. Браслет живёт в той же зоне, что и вуз. */
@@ -266,23 +419,35 @@ function decorateBells(view) {
   return view
 }
 
-function buildStatus(payload, moment) {
+const LINK_TEXT = {
+  connected: 'телефон на связи',
+  disconnected: 'телефон недоступен',
+  unknown: 'связь неизвестна'
+}
+
+function buildStatus(payload, moment, linkState, lastError) {
+  const link = lastError || LINK_TEXT[linkState] || LINK_TEXT.unknown
+
   if (!payload) {
     return {
       group: '—',
       updated: '—',
       volume: '—',
-      link: 'нет данных',
-      note: 'Откройте AstroBox на телефоне'
+      link: link,
+      note: 'Расписание приходит с телефона',
+      action: 'Обновить'
     }
   }
+
   const days = payload.days ? payload.days.length : 0
+  const stale = isStale(payload, moment.ms, 24)
   return {
     group: orDash(payload.g),
     updated: timestampLabel(payload.src),
     volume: days + ' дн. · ' + countLessons(payload) + ' пар',
-    link: isStale(payload, moment.ms, 24) ? 'данные устарели' : 'данные свежие',
-    note: 'Фаза 2: демонстрационные данные'
+    link: lastError || (stale ? 'данные устарели' : link),
+    note: 'Тап по экрану — следующий раздел',
+    action: 'Обновить'
   }
 }
 </script>
@@ -501,6 +666,23 @@ function buildStatus(payload, moment) {
   font-size: 16px;
   color: #ffffff;
   lines: 2;
+}
+
+.refresh {
+  flex-direction: row;
+  justify-content: center;
+  width: 100%;
+  margin-top: 12px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-radius: 12px;
+  background-color: #1E2A38;
+}
+
+.refresh-text {
+  font-size: 15px;
+  color: #8AB4E8;
+  text-align: center;
 }
 
 .status-note {
