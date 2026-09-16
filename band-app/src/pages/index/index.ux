@@ -179,6 +179,10 @@ function createRuntimeState() {
     receiver: createReceiver(),
     linkState: wire.LINK.UNKNOWN,
     lastError: null,
+    // Откуда взялись данные на экране. Строка «Кэш» на отладке раньше не
+    // отличала записанное в storage от вшитого примера, и этап с кэшем
+    // выглядел проверенным, хотя запись ни разу не выполнялась.
+    source: 'нет',
     alignTimer: null,
     tickTimer: null,
     rx: 0,
@@ -281,8 +285,10 @@ export default {
     cache.readPayload(function (payload) {
       if (payload) {
         state.payload = payload
+        state.source = 'storage'
       } else if (DEMO_WITHOUT_PHONE) {
         state.payload = mockPayload
+        state.source = 'пример'
       }
       self.refresh()
     })
@@ -297,6 +303,7 @@ export default {
     cache.writePayload(trimmed, function (ok, problem) {
       if (ok) {
         state.payload = trimmed
+        state.source = 'с телефона'
         state.lastError = null
         cache.writeMeta({ at: Date.now(), h: trimmed.h })
       } else {
@@ -635,7 +642,8 @@ function buildDiag(state) {
     } catch (err) {
       bytes = 0
     }
-    cacheLine = (state.payload.days ? state.payload.days.length : 0) + ' дн. · ' + bytes + ' Б'
+    cacheLine =
+      state.source + ' · ' + (state.payload.days ? state.payload.days.length : 0) + ' дн. · ' + bytes + ' Б'
   }
 
   return {
