@@ -34,7 +34,7 @@
 
     <!-- Сегодня / Далее: одна и та же вёрстка -->
     <div class="body" if="{{ hasData && (view === 1 || view === 2) }}">
-      <text class="day-subtitle">{{ day.subtitle }}</text>
+      <text class="day-subtitle" if="{{ showSubtitle }}">{{ day.subtitle }}</text>
       <text class="empty" if="{{ day.empty }}">{{ day.emptyText }}</text>
       <scroll class="scroll" scroll-y="true" if="{{ !day.empty }}">
         <div
@@ -203,6 +203,7 @@ export default {
     clock: '--:--',
     stale: false,
     hasData: false,
+    showSubtitle: false,
     fault: '',
     now: { headline: '', detail: '', card: null },
     day: { subtitle: '', rows: [], empty: true, emptyText: '' },
@@ -461,6 +462,7 @@ export default {
       state.lastError = 'передача оборвалась'
     }
 
+    this.showSubtitle = this.view === 1
     this.hasData = !!payload
     this.clock = hhmm(moment.minutes)
     this.viewTitle = VIEW_TITLES[this.view]
@@ -473,6 +475,8 @@ export default {
       this.day = decorateDay(todayView(payload, bellsData, moment.iso, moment.minutes))
     } else if (this.view === 2) {
       this.day = decorateDay(nextDayView(payload, bellsData, moment.iso))
+      // «Далее» ничего не добавляет к «Завтра» — день сам себе заголовок.
+      this.viewTitle = this.day.subtitle || VIEW_TITLES[2]
     } else if (this.view === 3) {
       this.bells = decorateBells(bellsView(bellsData, moment.minutes, todayLessons(payload, moment.iso)))
     } else if (this.view === VIEW_DEBUG) {
@@ -679,7 +683,8 @@ function buildDiag(state) {
 
 .view-title {
   font-size: 17px;
-  color: #b0b0b0;
+  font-weight: bold;
+  color: #c0c0c0;
   text-align: center;
   margin-top: 2px;
   line-height: 20px;
@@ -722,7 +727,8 @@ function buildDiag(state) {
 
 .detail {
   font-size: 19px;
-  color: #c0c0c0;
+  font-weight: bold;
+  color: #d0d0d0;
   text-align: center;
   margin-top: 4px;
   lines: 2;
@@ -742,7 +748,8 @@ function buildDiag(state) {
 
 .card-label {
   font-size: 15px;
-  color: #a0a0a0;
+  font-weight: bold;
+  color: #b0b0b0;
 }
 
 .card-name {
@@ -755,7 +762,8 @@ function buildDiag(state) {
 
 .card-meta {
   font-size: 18px;
-  color: #c0c0c0;
+  font-weight: bold;
+  color: #d0d0d0;
   margin-top: 2px;
   lines: 1;
   text-overflow: ellipsis;
@@ -766,7 +774,7 @@ function buildDiag(state) {
 .day-subtitle {
   font-size: 18px;
   font-weight: bold;
-  color: #b0b0b0;
+  color: #c0c0c0;
   text-align: center;
   margin-bottom: 6px;
   line-height: 22px;
@@ -820,7 +828,8 @@ function buildDiag(state) {
 
 .row-top {
   font-size: 17px;
-  color: #b8b8b8;
+  font-weight: bold;
+  color: #c8c8c8;
   lines: 1;
   text-overflow: ellipsis;
 }
@@ -836,8 +845,9 @@ function buildDiag(state) {
 }
 
 .row-bottom {
-  font-size: 16px;
-  color: #b8b8b8;
+  font-size: 17px;
+  font-weight: bold;
+  color: #c8c8c8;
   lines: 1;
   text-overflow: ellipsis;
 }
@@ -882,8 +892,9 @@ function buildDiag(state) {
 /* Половина пары: 13 знаков кеглем 14 — это 91 px при доступных 142, помещается
    с запасом. Одной строкой обе половины не влезали и рвались посимвольно. */
 .bell-half {
-  font-size: 14px;
-  color: #b0b0b0;
+  font-size: 15px;
+  font-weight: bold;
+  color: #bcbcbc;
   lines: 1;
 }
 
@@ -902,7 +913,8 @@ function buildDiag(state) {
 
 .status-line {
   font-size: 15px;
-  color: #a0a0a0;
+  font-weight: bold;
+  color: #b0b0b0;
   margin-top: 8px;
 }
 
@@ -932,8 +944,9 @@ function buildDiag(state) {
 }
 
 .status-note {
-  font-size: 14px;
-  color: #9a9a9a;
+  font-size: 15px;
+  font-weight: bold;
+  color: #b0b0b0;
   margin-top: 16px;
   lines: 2;
 }
@@ -948,7 +961,8 @@ function buildDiag(state) {
 
 .dots {
   font-size: 15px;
-  color: #8a8a8a;
+  font-weight: bold;
+  color: #9a9a9a;
   text-align: center;
   line-height: 18px;
 }
