@@ -19,13 +19,13 @@
  * See docs/VELA-RULES.md.
  */
 
-export const STAGE = 1
+export const STAGE = 2
 
 export const STAGE_STORAGE = 2
 export const STAGE_INTERCONNECT = 3
 
 /** Shown on the debug screen so the watch can tell us which build it runs. */
-export const BUILD = 's1'
+export const BUILD = 's2'
 
 export function allows(stage) {
   return STAGE >= stage

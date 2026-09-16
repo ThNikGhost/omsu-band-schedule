@@ -4,8 +4,8 @@
     <div class="header">
       <text class="clock">{{ clock }}</text>
       <text class="view-title">{{ viewTitle }}</text>
-      <text class="stale-mark" show="{{ stale }}">данные устарели</text>
-      <text class="fault" show="{{ fault }}">{{ fault }}</text>
+      <text class="stale-mark" if="{{ stale }}">данные устарели</text>
+      <text class="fault" if="{{ fault }}">{{ fault }}</text>
     </div>
 
     <!-- Нет данных вообще -->
@@ -21,7 +21,7 @@
     <!-- Сейчас -->
     <div class="body" if="{{ hasData && view === 0 }}">
       <text class="headline">{{ now.headline }}</text>
-      <text class="detail" show="{{ now.detail }}">{{ now.detail }}</text>
+      <text class="detail" if="{{ now.detail }}">{{ now.detail }}</text>
 
       <div class="card" if="{{ now.card }}">
         <text class="card-label">{{ now.card.label }}</text>
@@ -35,10 +35,9 @@
     <!-- Сегодня / Далее: одна и та же вёрстка -->
     <div class="body" if="{{ hasData && (view === 1 || view === 2) }}">
       <text class="day-subtitle">{{ day.subtitle }}</text>
-      <text class="empty" show="{{ day.empty }}">{{ day.emptyText }}</text>
-      <list class="scroll" show="{{ !day.empty }}">
-        <list-item
-          type="lesson"
+      <text class="empty" if="{{ day.empty }}">{{ day.emptyText }}</text>
+      <div class="scroll" if="{{ !day.empty }}">
+        <div
           class="row"
           for="{{(rowIndex, row) in day.rows}}"
           tid="key"
@@ -51,15 +50,14 @@
             <text class="row-name">{{ row.name }}</text>
             <text class="row-meta">{{ row.where }}</text>
           </div>
-        </list-item>
-      </list>
+        </div>
+      </div>
     </div>
 
     <!-- Звонки -->
     <div class="body" if="{{ hasData && view === 3 }}">
-      <list class="scroll">
-        <list-item
-          type="bell"
+      <div class="scroll">
+        <div
           class="bell-row"
           for="{{(bellIndex, bell) in bells.rows}}"
           tid="key"
@@ -67,10 +65,10 @@
           <text class="bell-pair">{{ bell.label }}</text>
           <div class="bell-main">
             <text class="bell-time">{{ bell.time }}</text>
-            <text class="bell-halves" show="{{ bell.halvesText }}">{{ bell.halvesText }}</text>
+            <text class="bell-halves" if="{{ bell.halvesText }}">{{ bell.halvesText }}</text>
           </div>
-        </list-item>
-      </list>
+        </div>
+      </div>
     </div>
 
     <!-- Состояние -->
@@ -126,12 +124,13 @@
  *     живут вне модели, иначе фреймворк пытается сделать реактивным нативный
  *     объект;
  *   - `onInit` ничего не делает, вся инициализация — в `onReady`;
- *   - у <list> обязана быть явная высота, иначе flex схлопывается в ничто.
+ *   - строки рисуются обычными div с for: <list>/<list-item> на устройстве
+ *     занимает место, но не рисует ни одного элемента.
  */
 
 import bellsData from '../../common/bells.js'
 import mockPayload from '../../common/mock.js'
-import { orDash, hhmm, timestampLabel } from '../../common/format.js'
+import { orDash, hhmm, plural, timestampLabel } from '../../common/format.js'
 import { countLessons, isStale, pruneBefore } from '../../common/schedule.js'
 import { bellsView, nextDayView, nowView, todayView } from '../../common/viewmodel.js'
 import { createReceiver, hasTimedOut, step, syncRequest, utf8Length } from '../../common/link.js'
@@ -148,9 +147,9 @@ const VIEW_DEBUG = 5
 // тик выравнивается по границе минуты, чтобы часы не отставали на полминуты.
 const TICK_MS = 60000
 
-// На первом этапе возвращения на браслет телефона ещё нет — показываем вшитый
-// пример, чтобы проверить только отрисовку.
-const DEMO_WITHOUT_PHONE = STAGE < 2
+// Пока телефона в схеме нет, показываем вшитый пример: на этапе 2 он служит
+// запасным вариантом, когда кэш ещё пуст, и экран не выглядит сломанным.
+const DEMO_WITHOUT_PHONE = STAGE < 3
 
 /**
  * Нереактивное состояние страницы.
@@ -576,6 +575,11 @@ const LINK_TEXT = {
   unknown: 'связь неизвестна'
 }
 
+function lessonCount(payload) {
+  const n = countLessons(payload)
+  return n + ' ' + plural(n, 'пара', 'пары', 'пар')
+}
+
 function buildStatus(payload, moment, linkState, lastError) {
   const link = lastError || LINK_TEXT[linkState] || LINK_TEXT.unknown
 
@@ -595,7 +599,7 @@ function buildStatus(payload, moment, linkState, lastError) {
   return {
     group: orDash(payload.g),
     updated: timestampLabel(payload.src),
-    volume: days + ' дн. · ' + countLessons(payload) + ' пар',
+    volume: days + ' дн. · ' + lessonCount(payload),
     link: lastError || (stale ? 'данные устарели' : link),
     note: 'Тап — следующий раздел, долгое нажатие — обновить',
     action: 'Обновить'
@@ -621,7 +625,7 @@ function buildDiag(state) {
   return {
     build: BUILD + ' · этап ' + STAGE,
     link: LINK_TEXT[state.linkState] || LINK_TEXT.unknown,
-    frames: '↓' + state.rx + '  ↑' + state.txOk + '  ✕' + state.txFail,
+    frames: 'принято ' + state.rx + ' · ушло ' + state.txOk + ' · сбоев ' + state.txFail,
     biggest: state.biggest ? state.biggest + ' Б' : '—',
     cache: cacheLine,
     error: state.lastError || 'нет'
@@ -630,10 +634,16 @@ function buildDiag(state) {
 </script>
 
 <style>
+/* Размеры заданы в пикселях, а не в процентах.
+   На устройстве `height: 100%` не разрешается — проценту не от чего считаться,
+   и страница схлопывается до высоты содержимого: видно шапку, а ниже фон окна.
+   Вместе с ней схлопывается `.body` с `flex-grow`, и список пропадает.
+   212×520 — экран Band 10, а designWidth равен 212, поэтому px здесь 1:1.
+   Так же поступает рабочее приложение honghongaiHub (336×480 под свой экран). */
 .page {
   flex-direction: column;
-  width: 100%;
-  height: 100%;
+  width: 212px;
+  height: 520px;
   background-color: #000000;
   padding-top: 14px;
   padding-bottom: 10px;
@@ -755,6 +765,9 @@ function buildDiag(state) {
    «使用时需要显式地设置高度», а одного flex-grow недостаточно — без опорных
    размеров дерево схлопывается, и экран остаётся пустым. 370 px посчитаны как
    520 минус шапка, подзаголовок и точки внизу; уточнить на устройстве. */
+/* Обычный div, а не <list>: на Band 10 <list>/<list-item> занимает место,
+   но не рисует ни одной строки. Прокрутки здесь нет, поэтому строки должны
+   помещаться в отведённую высоту. */
 .scroll {
   flex-direction: column;
   width: 100%;
