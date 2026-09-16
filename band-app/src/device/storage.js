@@ -8,13 +8,32 @@
  * Writing goes to a temporary key first, is read back, and only then replaces
  * the live one. A half-written value would otherwise leave the watch showing
  * nothing at all, which is worse than showing yesterday's schedule.
+ *
+ * The module is required lazily and only from stage 2 on - see device/stage.js.
+ * Every entry point calls its callback exactly once and never throws: a
+ * rejected read has to degrade to "no schedule yet", not to a dead page.
  */
 
-import storage from '@system.storage'
+import { allows, STAGE_STORAGE } from './stage.js'
 
 export const KEY = 'omsu.schedule.v1'
 export const TMP_KEY = 'omsu.schedule.v1.tmp'
 export const META_KEY = 'omsu.meta.v1'
+
+/** Resolved on first use, or null when this build must not touch storage. */
+function moduleOrNull() {
+  if (!allows(STAGE_STORAGE)) {
+    return null
+  }
+  try {
+    // eslint-disable-next-line no-undef
+    const mod = require('@system.storage')
+    return mod && mod.get ? mod : null
+  } catch (err) {
+    console.warn('storage unavailable: ' + err)
+    return null
+  }
+}
 
 /**
  * The runtime returns a stored value in one of three shapes depending on
@@ -34,6 +53,11 @@ function valueOf(data) {
 }
 
 function readKey(key, done) {
+  const storage = moduleOrNull()
+  if (!storage) {
+    done('')
+    return
+  }
   try {
     storage.get({
       key: key,
@@ -52,6 +76,11 @@ function readKey(key, done) {
 }
 
 function writeKey(key, value, done) {
+  const storage = moduleOrNull()
+  if (!storage || !storage.set) {
+    done(false)
+    return
+  }
   try {
     storage.set({
       key: key,
@@ -71,6 +100,10 @@ function writeKey(key, value, done) {
 }
 
 function deleteKey(key) {
+  const storage = moduleOrNull()
+  if (!storage || !storage.delete) {
+    return
+  }
   try {
     // An empty value deletes the entry, per the Vela storage docs; delete()
     // is called first and this is the fallback.

@@ -12,9 +12,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "aiot start --watch",
-    "build": "aiot build",
+    "build": "node scripts/build.mjs",
     "release": "aiot release",
-    "gen:frames": "echo \"Запускать в WSL: cd ../astrobox-plugin && cargo run -p omsu-sync-core --example emit_frames --target x86_64-unknown-linux-gnu\""
+    "gen:frames": "echo \"Запускать в WSL: cd ../astrobox-plugin && cargo run -p omsu-sync-core --example emit_frames --target x86_64-unknown-linux-gnu\"",
+    "build:raw": "aiot build"
   },
   "devDependencies": {
     "@aiot-toolkit/jsc": "^1.0.3",

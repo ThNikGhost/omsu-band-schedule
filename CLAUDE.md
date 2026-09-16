@@ -19,7 +19,7 @@ eservice.omsu.ru  --(раз в 3 ч)-->  server/  --(HTTP + токен)-->  astr
 | `band-app/` | Vela quick app для браслета (`.rpk`), package `ru.omsu.bandschedule` |
 | `astrobox-plugin/` | Плагин AstroBox v2: Rust → WebAssembly (`wasm32-wasip2`), пакет `.abp`. Собирается в WSL — Smart App Control блокирует cargo.exe |
 | `reference/` | **Только чтение.** Код старого проекта StudyHelper, источник проверенных решений |
-| `docs/` | `DECISIONS.md` — журнал решений и ограничений; `ORIGINAL_SPEC.md` — исходное ТЗ |
+| `docs/` | `VELA-RULES.md` — правила платформы браслета; `DECISIONS.md` — журнал решений и ограничений; `ORIGINAL_SPEC.md` — исходное ТЗ |
 
 ## Команды
 
@@ -45,6 +45,9 @@ docker compose up -d --build
 
 ## Правила
 
+- **Перед любой правкой `band-app/` — прочитать `docs/VELA-RULES.md`.** Нарушение правил Vela
+  не ловится ни тестами, ни компилятором: приложение молча показывает чёрный экран и может
+  подвесить браслет целиком. Один раз это уже произошло.
 - **Секреты только через env.** Токены, `.env`, ключи подписи не коммитим (см. `.gitignore`).
 - **`reference/` не редактируем** — оттуда только копируем и адаптируем.
 - Факт о платформе (Vela, AstroBox), не подтверждённый документацией или экспериментом,

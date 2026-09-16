@@ -1,12 +1,4 @@
 <template>
-  <!--
-    Тап переключает раздел, долгое нажатие запрашивает расписание. Долгое
-    нажатие продублировано на всю страницу намеренно: модификаторов вроде
-    @click.stop в этом компиляторе нет, поэтому неизвестно, всплывёт ли тап
-    по кнопке «Обновить» до обработчика страницы. Оба исхода нормальны —
-    либо просто синхронизация, либо синхронизация и переход на «Сейчас», —
-    но жест, который точно ни с чем не конфликтует, тоже нужен.
-  -->
   <div class="page" @click="nextView" @longpress="requestSync">
 
     <div class="header">
@@ -94,7 +86,22 @@
         <text class="refresh-text">{{ status.action }}</text>
       </div>
       <text class="status-note">{{ status.note }}</text>
-      <text class="status-note">Долгое нажатие — запросить расписание</text>
+    </div>
+
+    <!-- Отладка: единственный способ увидеть, что происходит на устройстве -->
+    <div class="body status-body" if="{{ view === 5 }}">
+      <text class="status-line">Сборка</text>
+      <text class="status-value">{{ diag.build }}</text>
+      <text class="status-line">Связь</text>
+      <text class="status-value">{{ diag.link }}</text>
+      <text class="status-line">Кадры</text>
+      <text class="status-value">{{ diag.frames }}</text>
+      <text class="status-line">Крупнейший кадр</text>
+      <text class="status-value">{{ diag.biggest }}</text>
+      <text class="status-line">Кэш</text>
+      <text class="status-value">{{ diag.cache }}</text>
+      <text class="status-line">Последняя ошибка</text>
+      <text class="status-value">{{ diag.error }}</text>
     </div>
 
     <div class="footer">
@@ -104,25 +111,84 @@
 </template>
 
 <script>
+/*
+ * Одна страница, шесть разделов, тап листает их по кругу.
+ *
+ * Долгое нажатие продублировано на всю страницу намеренно: неизвестно, всплывёт
+ * ли тап по кнопке «Обновить» до обработчика страницы. Оба исхода нормальны —
+ * либо просто синхронизация, либо синхронизация и переход на «Сейчас», — но
+ * жест, который точно ни с чем не конфликтует, тоже нужен.
+ *
+ * Правила платформы, которым подчиняется этот файл, — в docs/VELA-RULES.md.
+ * Коротко, самое важное:
+ *   - в `private` только то, что рисуется; экземпляр соединения и таймеры
+ *     живут вне модели, иначе фреймворк пытается сделать реактивным нативный
+ *     объект;
+ *   - `onInit` ничего не делает, вся инициализация — в `onReady`;
+ *   - у <list> обязана быть явная высота, иначе flex схлопывается в ничто.
+ */
+
 import bellsData from '../../common/bells.js'
 import mockPayload from '../../common/mock.js'
 import { orDash, hhmm, timestampLabel } from '../../common/format.js'
 import { countLessons, isStale, pruneBefore } from '../../common/schedule.js'
 import { bellsView, nextDayView, nowView, todayView } from '../../common/viewmodel.js'
-import { createReceiver, hasTimedOut, step, syncRequest } from '../../common/link.js'
+import { createReceiver, hasTimedOut, step, syncRequest, utf8Length } from '../../common/link.js'
 import * as cache from '../../device/storage.js'
 import * as wire from '../../device/link.js'
+import { BUILD, STAGE } from '../../device/stage.js'
 
-const VIEW_TITLES = ['Сейчас', 'Сегодня', 'Далее', 'Звонки', 'Состояние']
+const VIEW_TITLES = ['Сейчас', 'Сегодня', 'Далее', 'Звонки', 'Состояние', 'Отладка']
 const VIEW_COUNT = VIEW_TITLES.length
+const VIEW_DEBUG = 5
 
-// Пока экран открыт, пересчитываем состояние раз в 30 секунд: этого хватает,
-// чтобы «до перемены 12 мин» не врало, и не будит процессор попусту.
-const TICK_MS = 30000
+// Пока экран открыт, пересчитываем состояние раз в минуту: этого хватает,
+// чтобы «до перемены 12 мин» не врало, и не будит процессор попусту. Первый
+// тик выравнивается по границе минуты, чтобы часы не отставали на полминуты.
+const TICK_MS = 60000
 
-// Поставьте true, чтобы прогнать экраны в эмуляторе на вшитом примере:
-// телефона там нет, а значит и синхронизации тоже.
-const DEMO_WITHOUT_PHONE = false
+// На первом этапе возвращения на браслет телефона ещё нет — показываем вшитый
+// пример, чтобы проверить только отрисовку.
+const DEMO_WITHOUT_PHONE = STAGE < 2
+
+/**
+ * Нереактивное состояние страницы.
+ *
+ * Сюда идёт всё, что нельзя отдать фреймворку: экземпляр соединения, таймеры,
+ * распакованный payload, счётчики отладки. Класть нативный объект в `private`
+ * означает просить фреймворк сделать его реактивным — рабочее приложение
+ * `Portable-Class-Schedule` специально этого избегает, и раздел документации
+ * про память советует то же.
+ *
+ * Оно держит состояние в `WeakMap` по экземпляру страницы; здесь достаточно
+ * модульного синглтона, потому что страница ровно одна, а лишняя зависимость
+ * от `WeakMap` в рантайме браслета сейчас не нужна — на первом этапе любой
+ * отказ должен указывать на вёрстку, а не на неё.
+ */
+let runtimeState = null
+
+function createRuntimeState() {
+  return {
+    payload: null,
+    connection: null,
+    receiver: createReceiver(),
+    linkState: wire.LINK.UNKNOWN,
+    lastError: null,
+    alignTimer: null,
+    tickTimer: null,
+    rx: 0,
+    txOk: 0,
+    txFail: 0,
+    biggest: 0
+  }
+}
+
+function getState() {
+  if (!runtimeState) {
+    runtimeState = createRuntimeState()
+  }
+  return runtimeState
+}
 
 export default {
   private: {
@@ -135,20 +201,17 @@ export default {
     now: { headline: '', detail: '', card: null },
     day: { subtitle: '', rows: [], empty: true, emptyText: '' },
     bells: { rows: [] },
-    status: { group: '—', updated: '—', volume: '—', link: '—', note: '', action: 'Обновить' }
+    status: { group: '—', updated: '—', volume: '—', link: '—', note: '', action: 'Обновить' },
+    diag: { build: '', link: '—', frames: '—', biggest: '—', cache: '—', error: '—' }
   },
 
-  onInit() {
-    this.payload = null
-    this.timer = null
-    this.connection = null
-    this.receiver = createReceiver()
-    this.linkState = wire.LINK.UNKNOWN
-    this.lastError = null
-    this.loadCache()
-  },
+  // Здесь намеренно пусто: шаблон ещё не скомпилирован, а системные API в этом
+  // хуке — одна из причин, по которой первая версия приложения не запускалась.
+  onInit() {},
 
   onReady() {
+    getState()
+    this.loadCache()
     this.refresh()
   },
 
@@ -167,17 +230,22 @@ export default {
 
   onDestroy() {
     this.stopTimer()
+    const state = getState()
+    wire.close(state.connection)
+    state.connection = null
+    runtimeState = null
   },
 
   // ------------------------------------------------------------ данные
 
   loadCache() {
     const self = this
+    const state = getState()
     cache.readPayload(function (payload) {
       if (payload) {
-        self.payload = payload
+        state.payload = payload
       } else if (DEMO_WITHOUT_PHONE) {
-        self.payload = mockPayload
+        state.payload = mockPayload
       }
       self.refresh()
     })
@@ -185,17 +253,18 @@ export default {
 
   storePayload(payload) {
     const self = this
+    const state = getState()
     // Вперёд объём ограничен сервером (параметр days), назад — этой чисткой,
     // иначе кэш рос бы весь семестр.
     const trimmed = pruneBefore(payload, deviceMoment().iso)
     cache.writePayload(trimmed, function (ok, problem) {
       if (ok) {
-        self.payload = trimmed
-        self.lastError = null
+        state.payload = trimmed
+        state.lastError = null
         cache.writeMeta({ at: Date.now(), h: trimmed.h })
       } else {
         // Старый кэш остался нетронутым — показываем его дальше.
-        self.lastError = problem || 'не удалось сохранить'
+        state.lastError = problem || 'не удалось сохранить'
       }
       self.refresh()
     })
@@ -204,22 +273,23 @@ export default {
   // ------------------------------------------------------------- связь
 
   openLink() {
-    if (this.connection) {
+    const state = getState()
+    if (state.connection) {
       this.updateLinkState()
       return
     }
     const self = this
-    this.connection = wire.open({
+    state.connection = wire.open({
       onOpen() {
-        self.linkState = wire.LINK.CONNECTED
+        state.linkState = wire.LINK.CONNECTED
         self.refresh()
       },
       onClose() {
-        self.linkState = wire.LINK.DISCONNECTED
+        state.linkState = wire.LINK.DISCONNECTED
         self.refresh()
       },
       onError() {
-        self.linkState = wire.LINK.DISCONNECTED
+        state.linkState = wire.LINK.DISCONNECTED
         self.refresh()
       },
       onMessage(data) {
@@ -231,44 +301,67 @@ export default {
 
   updateLinkState() {
     const self = this
-    wire.checkState(this.connection, function (state) {
-      self.linkState = state
+    const state = getState()
+    wire.checkState(state.connection, function (linkState) {
+      state.linkState = linkState
       self.refresh()
     })
   },
 
   requestSync() {
-    if (!this.connection) {
+    const state = getState()
+    if (!state.connection) {
       this.openLink()
     }
-    const have = this.payload && this.payload.h ? this.payload.h : null
+    const have = state.payload && state.payload.h ? state.payload.h : null
     const self = this
-    wire.send(this.connection, syncRequest(have), function (ok, code) {
+    this.sendWire(syncRequest(have), function (ok, code) {
       if (!ok) {
-        self.lastError = 'телефон недоступен'
-        self.linkState = wire.LINK.DISCONNECTED
+        state.lastError = 'телефон недоступен'
+        state.linkState = wire.LINK.DISCONNECTED
         console.warn('sync_req не ушёл: ' + code)
         self.refresh()
       }
     })
   },
 
+  /** Единственная точка отправки — чтобы счётчики отладки видели всё. */
+  sendWire(text, done) {
+    const state = getState()
+    wire.send(state.connection, text, function (ok, code) {
+      if (ok) {
+        state.txOk += 1
+      } else {
+        state.txFail += 1
+      }
+      done && done(ok, code)
+    })
+  },
+
   onWireMessage(data) {
-    const outcome = step(this.receiver, data, Date.now())
-    this.receiver = outcome.state
+    const state = getState()
+    state.rx += 1
+
+    const size = utf8Length(typeof data === 'string' ? data : JSON.stringify(data) || '')
+    if (size > state.biggest) {
+      state.biggest = size
+    }
+
+    const outcome = step(state.receiver, data, Date.now())
+    state.receiver = outcome.state
 
     if (outcome.log) {
       console.log('link: ' + outcome.log)
     }
     for (let i = 0; i < outcome.send.length; i += 1) {
-      wire.send(this.connection, outcome.send[i], null)
+      this.sendWire(outcome.send[i], null)
     }
     if (outcome.error) {
-      this.lastError = outcome.error
+      state.lastError = outcome.error
     }
     if (outcome.status === 'up_to_date') {
-      this.lastError = null
-      cache.writeMeta({ at: Date.now(), h: this.payload ? this.payload.h : null })
+      state.lastError = null
+      cache.writeMeta({ at: Date.now(), h: state.payload ? state.payload.h : null })
     }
     if (outcome.apply) {
       this.storePayload(outcome.apply)
@@ -277,20 +370,42 @@ export default {
     this.refresh()
   },
 
+  // ------------------------------------------------------------ таймер
+
   startTimer() {
     this.stopTimer()
     const self = this
-    this.timer = setInterval(function () {
+    const state = getState()
+    // Выравнивание по границе минуты: иначе часы на экране отстают от системных
+    // в среднем на полтика.
+    state.alignTimer = setTimeout(function () {
+      state.alignTimer = null
+      if (!self.$valid) {
+        return
+      }
       self.refresh()
-    }, TICK_MS)
+      state.tickTimer = setInterval(function () {
+        if (!self.$valid) {
+          return
+        }
+        self.refresh()
+      }, TICK_MS)
+    }, TICK_MS - (Date.now() % TICK_MS))
   },
 
   stopTimer() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    const state = getState()
+    if (state.alignTimer) {
+      clearTimeout(state.alignTimer)
+      state.alignTimer = null
+    }
+    if (state.tickTimer) {
+      clearInterval(state.tickTimer)
+      state.tickTimer = null
     }
   },
+
+  // -------------------------------------------------------------- вид
 
   nextView() {
     this.view = (this.view + 1) % VIEW_COUNT
@@ -298,13 +413,14 @@ export default {
   },
 
   refresh() {
+    const state = getState()
     const moment = deviceMoment()
-    const payload = this.payload
+    const payload = state.payload
 
     // Оборвавшуюся передачу бросаем и остаёмся на старом кэше.
-    if (hasTimedOut(this.receiver, Date.now())) {
-      this.receiver = createReceiver()
-      this.lastError = 'передача оборвалась'
+    if (hasTimedOut(state.receiver, Date.now())) {
+      state.receiver = createReceiver()
+      state.lastError = 'передача оборвалась'
     }
 
     this.hasData = !!payload
@@ -321,13 +437,15 @@ export default {
       this.day = decorateDay(nextDayView(payload, bellsData, moment.iso))
     } else if (this.view === 3) {
       this.bells = decorateBells(bellsView(bellsData, moment.minutes, todayLessons(payload, moment.iso)))
+    } else if (this.view === VIEW_DEBUG) {
+      this.diag = buildDiag(state)
     } else {
-      this.status = buildStatus(payload, moment, this.linkState, this.lastError)
+      this.status = buildStatus(payload, moment, state.linkState, state.lastError)
     }
 
     // Экран «нет данных» тоже показывает кнопку и состояние связи.
     if (!payload) {
-      this.status = buildStatus(null, moment, this.linkState, this.lastError)
+      this.status = buildStatus(null, moment, state.linkState, state.lastError)
     }
   }
 }
@@ -389,7 +507,8 @@ function decorateNow(view) {
   return view
 }
 
-// Динамических классов в quick app нет — подсветку задаём инлайновым стилем.
+// Динамический class компилятор поддерживает, но условное оформление здесь
+// проще задать инлайновым стилем — значений всего три.
 const STYLE_CURRENT = 'opacity: 1;'
 const STYLE_PAST = 'opacity: 0.35;'
 const STYLE_NORMAL = 'opacity: 0.75;'
@@ -432,7 +551,7 @@ function buildStatus(payload, moment, linkState, lastError) {
       updated: '—',
       volume: '—',
       link: link,
-      note: 'Расписание приходит с телефона',
+      note: 'Тап — следующий раздел, долгое нажатие — обновить',
       action: 'Обновить'
     }
   }
@@ -444,8 +563,34 @@ function buildStatus(payload, moment, linkState, lastError) {
     updated: timestampLabel(payload.src),
     volume: days + ' дн. · ' + countLessons(payload) + ' пар',
     link: lastError || (stale ? 'данные устарели' : link),
-    note: 'Тап по экрану — следующий раздел',
+    note: 'Тап — следующий раздел, долгое нажатие — обновить',
     action: 'Обновить'
+  }
+}
+
+/**
+ * Экран отладки. Снять `console.log` с браслета нечем — ни AstroBox, ни его CLI
+ * этого не умеют, — поэтому состояние показывается прямо на устройстве.
+ */
+function buildDiag(state) {
+  let cacheLine = 'пусто'
+  if (state.payload) {
+    let bytes = 0
+    try {
+      bytes = utf8Length(JSON.stringify(state.payload))
+    } catch (err) {
+      bytes = 0
+    }
+    cacheLine = (state.payload.days ? state.payload.days.length : 0) + ' дн. · ' + bytes + ' Б'
+  }
+
+  return {
+    build: BUILD + ' · этап ' + STAGE,
+    link: LINK_TEXT[state.linkState] || LINK_TEXT.unknown,
+    frames: '↓' + state.rx + '  ↑' + state.txOk + '  ✕' + state.txFail,
+    biggest: state.biggest ? state.biggest + ' Б' : '—',
+    cache: cacheLine,
+    error: state.lastError || 'нет'
   }
 }
 </script>
@@ -561,11 +706,16 @@ function buildStatus(payload, moment, linkState, lastError) {
 }
 
 /* Список прокручивается: у дня бывает до восьми пар, а с двумя подгруппами
-   строк ещё больше, и в 520 px они не помещаются. */
+   строк ещё больше, и в 520 px они не помещаются.
+
+   Высота ЗАДАНА ЯВНО и это обязательно: документация Vela требует
+   «使用时需要显式地设置高度», а одного flex-grow недостаточно — без опорных
+   размеров дерево схлопывается, и экран остаётся пустым. 370 px посчитаны как
+   520 минус шапка, подзаголовок и точки внизу; уточнить на устройстве. */
 .scroll {
   flex-direction: column;
   width: 100%;
-  flex-grow: 1;
+  height: 370px;
 }
 
 .row {
@@ -648,7 +798,7 @@ function buildStatus(payload, moment, linkState, lastError) {
   color: #7a7a7a;
 }
 
-/* --- Состояние --- */
+/* --- Состояние и отладка --- */
 
 .status-body {
   flex-grow: 1;
@@ -702,6 +852,5 @@ function buildStatus(payload, moment, linkState, lastError) {
   font-size: 13px;
   color: #5a5a5a;
   text-align: center;
-  letter-spacing: 3px;
 }
 </style>
