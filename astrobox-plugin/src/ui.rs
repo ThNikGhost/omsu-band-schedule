@@ -1,6 +1,6 @@
 //! Settings screen inside AstroBox.
 
-use astrobox_ng_wit::astrobox::psys_host::{self, ui_v3};
+use astrobox_ng_wit::astrobox::psys_host::{self, dialog, ui_v3};
 
 use crate::state::{log_line, save_settings, with_state};
 use crate::sync;
@@ -13,6 +13,9 @@ pub const EVENT_DAYS: &str = "field_days";
 pub const EVENT_PACKAGE: &str = "field_package";
 pub const EVENT_SYNC: &str = "btn_sync";
 pub const EVENT_SAVE: &str = "btn_save";
+
+/// Prefix for the "enter it in a dialog" buttons: `ask_` plus the field id.
+const ASK_PREFIX: &str = "ask_";
 
 const CARD_BG: &str = "#1E1E1F";
 const FIELD_BG: &str = "#141415";
@@ -37,6 +40,9 @@ pub async fn handle_ui_event(event: ui_v3::Event, event_id: &str, payload: &str)
             // Fields are not redrawn on every keystroke: re-rendering would
             // move the caret and fight the user.
         }
+        ui_v3::Event::Click if event_id.starts_with(ASK_PREFIX) => {
+            ask_for_field(&event_id[ASK_PREFIX.len()..]).await;
+        }
         ui_v3::Event::Click => match event_id {
             EVENT_SAVE => {
                 let settings = with_state(|s| s.settings.clone());
@@ -54,6 +60,70 @@ pub async fn handle_ui_event(event: ui_v3::Event, event_id: &str, payload: &str)
             _ => {}
         },
         _ => {}
+    }
+}
+
+/// Asks for one field through the host's own input dialog.
+///
+/// The embedded input is a controlled field: the host keeps forcing back the
+/// value we rendered, and we deliberately do not re-render on every keystroke,
+/// so on the phone it could not be typed into at all. The dialog sidesteps the
+/// question entirely and brings up the system keyboard.
+async fn ask_for_field(field_id: &str) {
+    let (title, current) = with_state(|s| match field_id {
+        EVENT_SERVER => ("Адрес сервера", s.settings.server_url.clone()),
+        EVENT_TOKEN => ("Токен", String::new()),
+        EVENT_GROUP => ("Группа", group_text(s.settings.group_id)),
+        EVENT_SUBGROUP => ("Подгруппа", s.settings.subgroup_text()),
+        EVENT_DAYS => ("Дней вперёд", s.settings.days.to_string()),
+        EVENT_PACKAGE => ("Приложение на браслете", s.settings.package_name.clone()),
+        _ => ("Значение", String::new()),
+    });
+
+    let hint = if current.is_empty() {
+        field_hint(field_id).to_string()
+    } else {
+        format!("сейчас: {current}")
+    };
+
+    let info = dialog::DialogInfo {
+        title: title.to_string(),
+        content: hint,
+        buttons: vec![
+            dialog::DialogButton { id: "ok".into(), primary: true, content: "Сохранить".into() },
+            dialog::DialogButton { id: "cancel".into(), primary: false, content: "Отмена".into() },
+        ],
+    };
+
+    let result = dialog::show_dialog(dialog::DialogType::Input, dialog::DialogStyle::System, &info).await;
+    if result.clicked_btn_id == "cancel" {
+        return;
+    }
+
+    let value = result.input_result.trim().to_string();
+    // Пустой ответ означает «ничего не ввёл» — не затираем то, что уже есть.
+    if value.is_empty() {
+        return;
+    }
+
+    apply_field(field_id, &value);
+    let settings = with_state(|s| s.settings.clone());
+    match save_settings(&settings) {
+        Ok(()) => log_line(format!("{title}: сохранено")),
+        Err(err) => log_line(err),
+    }
+    sync::redraw().await;
+}
+
+fn field_hint(field_id: &str) -> &'static str {
+    match field_id {
+        EVENT_SERVER => "https://...",
+        EVENT_TOKEN => "выдан сервером",
+        EVENT_GROUP => "5028",
+        EVENT_SUBGROUP => "1, 2 или пусто",
+        EVENT_DAYS => "14",
+        EVENT_PACKAGE => "ru.omsu.bandschedule",
+        _ => "",
     }
 }
 
@@ -182,23 +252,57 @@ fn group_text(group_id: u32) -> String {
     }
 }
 
+/// One settings row: what is stored, a field to type into, and a button that
+/// asks through the host's own dialog.
+///
+/// Two ways in on purpose. The embedded field used to carry `value`, which the
+/// host treats as a controlled prop and keeps forcing back to what we last
+/// rendered — on the phone it could not be typed into. `defaultValue` gives the
+/// field its starting text and then leaves it alone. Should that still not
+/// work, the button opens a system dialog with a real keyboard.
 fn field(label: &str, event_id: &str, value: &str, placeholder: &str) -> ui_v3::Element {
+    let shown = if value.is_empty() {
+        text("не задано", 13, WARN)
+    } else if event_id == EVENT_TOKEN {
+        // Токен не показываем целиком: экран телефона легко попадает в кадр.
+        text(&format!("задан, {} знаков", value.chars().count()), 13, MUTED)
+    } else {
+        text(value, 13, MUTED)
+    };
+
     column()
         .gap(4)
         .width_full()
-        .child(text(label, 13, MUTED))
         .child(
-            ui_v3::Element::new(ui_v3::ElementType::Input, None)
-                .prop("value", value)
-                .prop("placeholder", placeholder)
+            row()
                 .width_full()
-                .padding(8)
-                .radius(8)
-                .bg(FIELD_BG)
-                .text_color(TEXT)
-                .size(15)
-                .on(ui_v3::Event::Input, event_id)
-                .on(ui_v3::Event::Change, event_id),
+                .gap(8)
+                .child(text(label, 13, MUTED))
+                .child(shown),
+        )
+        .child(
+            row()
+                .width_full()
+                .gap(8)
+                .child(
+                    ui_v3::Element::new(ui_v3::ElementType::Input, None)
+                        .prop("defaultValue", value)
+                        .prop("placeholder", placeholder)
+                        .width_full()
+                        .padding(8)
+                        .radius(8)
+                        .bg(FIELD_BG)
+                        .text_color(TEXT)
+                        .size(15)
+                        .on(ui_v3::Event::Input, event_id)
+                        .on(ui_v3::Event::Change, event_id),
+                )
+                .child(button(
+                    "Ввести",
+                    &format!("{ASK_PREFIX}{event_id}"),
+                    BTN_BG,
+                    false,
+                )),
         )
 }
 
