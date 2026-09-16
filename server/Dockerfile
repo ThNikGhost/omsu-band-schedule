@@ -6,7 +6,9 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
 
-WORKDIR /build
+# Must match the runtime stage: uv bakes an absolute interpreter path into the
+# console scripts, so a venv built under /build cannot be copied to /app.
+WORKDIR /app
 COPY server/pyproject.toml server/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
@@ -28,7 +30,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
     ABBREVIATIONS_PATH=/app/abbreviations.yaml
 
 WORKDIR /app
-COPY --from=builder /build/.venv /app/.venv
+COPY --from=builder /app/.venv /app/.venv
 COPY server/app /app/app
 COPY server/abbreviations.yaml /app/abbreviations.yaml
 COPY shared /app/shared
