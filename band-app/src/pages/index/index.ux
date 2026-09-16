@@ -36,7 +36,7 @@
     <div class="body" if="{{ hasData && (view === 1 || view === 2) }}">
       <text class="day-subtitle">{{ day.subtitle }}</text>
       <text class="empty" if="{{ day.empty }}">{{ day.emptyText }}</text>
-      <div class="scroll" if="{{ !day.empty }}">
+      <scroll class="scroll" scroll-y="true" if="{{ !day.empty }}">
         <div
           class="row"
           for="{{(rowIndex, row) in day.rows}}"
@@ -45,12 +45,12 @@
           <text class="row-top">{{ row.top }}</text>
           <text class="row-name">{{ row.name }}</text>
         </div>
-      </div>
+      </scroll>
     </div>
 
     <!-- Звонки -->
     <div class="body" if="{{ hasData && view === 3 }}">
-      <div class="scroll">
+      <scroll class="scroll" scroll-y="true">
         <div
           class="bell-row"
           for="{{(bellIndex, bell) in bells.rows}}"
@@ -62,7 +62,7 @@
             <text class="bell-halves" if="{{ bell.halvesText }}">{{ bell.halvesText }}</text>
           </div>
         </div>
-      </div>
+      </scroll>
     </div>
 
     <!-- Состояние -->
@@ -98,7 +98,6 @@
     </div>
 
     <div class="footer">
-      <text class="page-mark" if="{{ pageMark }}">{{ pageMark }}</text>
       <text class="dots">{{ dots }}</text>
     </div>
   </div>
@@ -137,12 +136,6 @@ const VIEW_TITLES = ['Сейчас', 'Сегодня', 'Далее', 'Звонк
 const VIEW_COUNT = VIEW_TITLES.length
 const VIEW_DEBUG = 5
 
-// Прокрутки на этой платформе нет: ни <list>, ни <scroll> не листаются на
-// Band 10. Поэтому длинный день разбивается на страницы, а листает их тот же
-// тап, который переключает разделы — он единственный проверенно работает.
-// Числа подобраны под высоту .scroll при текущих кеглях.
-const DAY_ROWS_PER_PAGE = 4
-const BELL_ROWS_PER_PAGE = 7
 
 // Пока экран открыт, пересчитываем состояние раз в минуту: этого хватает,
 // чтобы «до перемены 12 мин» не врало, и не будит процессор попусту. Первый
@@ -195,9 +188,6 @@ function getState() {
 export default {
   private: {
     view: 0,
-    page: 0,
-    pageCount: 1,
-    pageMark: '',
     viewTitle: VIEW_TITLES[0],
     dots: '',
     clock: '--:--',
@@ -467,31 +457,19 @@ export default {
     this.dots = dotsFor(this.view)
     this.stale = isStale(payload, moment.ms, 24)
 
-    let pages = 1
-
     if (this.view === 0) {
       this.now = decorateNow(nowView(payload, bellsData, moment.iso, moment.minutes))
-    } else if (this.view === 1 || this.view === 2) {
-      const whole =
-        this.view === 1
-          ? decorateDay(todayView(payload, bellsData, moment.iso, moment.minutes))
-          : decorateDay(nextDayView(payload, bellsData, moment.iso))
-      pages = pageCount(whole.rows.length, DAY_ROWS_PER_PAGE)
-      this.page = Math.min(this.page, pages - 1)
-      this.day = withPage(whole, this.page, DAY_ROWS_PER_PAGE)
+    } else if (this.view === 1) {
+      this.day = decorateDay(todayView(payload, bellsData, moment.iso, moment.minutes))
+    } else if (this.view === 2) {
+      this.day = decorateDay(nextDayView(payload, bellsData, moment.iso))
     } else if (this.view === 3) {
-      const whole = decorateBells(bellsView(bellsData, moment.minutes, todayLessons(payload, moment.iso)))
-      pages = pageCount(whole.rows.length, BELL_ROWS_PER_PAGE)
-      this.page = Math.min(this.page, pages - 1)
-      this.bells = withPage(whole, this.page, BELL_ROWS_PER_PAGE)
+      this.bells = decorateBells(bellsView(bellsData, moment.minutes, todayLessons(payload, moment.iso)))
     } else if (this.view === VIEW_DEBUG) {
       this.diag = buildDiag(state)
     } else {
       this.status = buildStatus(payload, moment, state.linkState, state.lastError)
     }
-
-    this.pageCount = pages
-    this.pageMark = pages > 1 ? this.page + 1 + '/' + pages : ''
 
     // Экран «нет данных» тоже показывает кнопку и состояние связи.
     if (!payload) {
@@ -518,21 +496,6 @@ function isoDate(date) {
 
 function two(value) {
   return value < 10 ? '0' + value : String(value)
-}
-
-function pageCount(rowCount, perPage) {
-  return rowCount > perPage ? Math.ceil(rowCount / perPage) : 1
-}
-
-/** Возвращает тот же вид, но только со строками запрошенной страницы. */
-function withPage(view, page, perPage) {
-  const start = page * perPage
-  const rows = []
-  for (let i = start; i < view.rows.length && i < start + perPage; i += 1) {
-    rows.push(view.rows[i])
-  }
-  view.rows = rows
-  return view
 }
 
 function dotsFor(view) {
@@ -800,8 +763,8 @@ function buildDiag(state) {
    размеров дерево схлопывается, и экран остаётся пустым. 370 px посчитаны как
    520 минус шапка, подзаголовок и точки внизу; уточнить на устройстве. */
 /* Обычный div, а не <list>: на Band 10 <list>/<list-item> занимает место,
-   но не рисует ни одной строки; <scroll> рисует, но не прокручивается. Значит
-   прокрутки нет вовсе, и длинный день разбит на страницы — их листает тап. */
+   но не рисует ни одной строки. Прокрутка — на <scroll scroll-y="true">, и
+   высота здесь обязана быть фиксированной: 「竖向滚动需要设置定高」. */
 .scroll {
   flex-direction: column;
   width: 100%;
@@ -839,12 +802,6 @@ function buildDiag(state) {
   text-overflow: ellipsis;
 }
 
-.page-mark {
-  font-size: 13px;
-  color: #8a8a8a;
-  text-align: center;
-  margin-right: 8px;
-}
 
 
 /* --- Звонки --- */
