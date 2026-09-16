@@ -42,26 +42,15 @@
           for="{{(rowIndex, row) in day.rows}}"
           tid="key"
           style="{{ row.style }}">
-          <div class="row-left">
-            <text class="row-pair">{{ row.pair }}</text>
-            <text class="row-start">{{ row.start }}</text>
-          </div>
-          <div class="row-main">
-            <text class="row-name">{{ row.name }}</text>
-            <text class="row-meta">{{ row.where }}</text>
-          </div>
+          <text class="row-top">{{ row.top }}</text>
+          <text class="row-name">{{ row.name }}</text>
         </div>
       </div>
     </div>
 
-    <!--
-      Звонки: единственный экран на <scroll>. Это проверка компонента — <list>
-      на устройстве место занимает, но ничего не рисует, и прокрутка нам нужна,
-      потому что с крупным шрифтом строки перестают помещаться. Если <scroll>
-      окажется таким же, пустым останется только этот экран.
-    -->
+    <!-- Звонки -->
     <div class="body" if="{{ hasData && view === 3 }}">
-      <scroll class="scroll">
+      <div class="scroll">
         <div
           class="bell-row"
           for="{{(bellIndex, bell) in bells.rows}}"
@@ -73,7 +62,7 @@
             <text class="bell-halves" if="{{ bell.halvesText }}">{{ bell.halvesText }}</text>
           </div>
         </div>
-      </scroll>
+      </div>
     </div>
 
     <!-- Состояние -->
@@ -109,6 +98,7 @@
     </div>
 
     <div class="footer">
+      <text class="page-mark" if="{{ pageMark }}">{{ pageMark }}</text>
       <text class="dots">{{ dots }}</text>
     </div>
   </div>
@@ -146,6 +136,13 @@ import { BUILD, STAGE } from '../../device/stage.js'
 const VIEW_TITLES = ['Сейчас', 'Сегодня', 'Далее', 'Звонки', 'Состояние', 'Отладка']
 const VIEW_COUNT = VIEW_TITLES.length
 const VIEW_DEBUG = 5
+
+// Прокрутки на этой платформе нет: ни <list>, ни <scroll> не листаются на
+// Band 10. Поэтому длинный день разбивается на страницы, а листает их тот же
+// тап, который переключает разделы — он единственный проверенно работает.
+// Числа подобраны под высоту .scroll при текущих кеглях.
+const DAY_ROWS_PER_PAGE = 4
+const BELL_ROWS_PER_PAGE = 7
 
 // Пока экран открыт, пересчитываем состояние раз в минуту: этого хватает,
 // чтобы «до перемены 12 мин» не врало, и не будит процессор попусту. Первый
@@ -198,6 +195,9 @@ function getState() {
 export default {
   private: {
     view: 0,
+    page: 0,
+    pageCount: 1,
+    pageMark: '',
     viewTitle: VIEW_TITLES[0],
     dots: '',
     clock: '--:--',
@@ -467,19 +467,31 @@ export default {
     this.dots = dotsFor(this.view)
     this.stale = isStale(payload, moment.ms, 24)
 
+    let pages = 1
+
     if (this.view === 0) {
       this.now = decorateNow(nowView(payload, bellsData, moment.iso, moment.minutes))
-    } else if (this.view === 1) {
-      this.day = decorateDay(todayView(payload, bellsData, moment.iso, moment.minutes))
-    } else if (this.view === 2) {
-      this.day = decorateDay(nextDayView(payload, bellsData, moment.iso))
+    } else if (this.view === 1 || this.view === 2) {
+      const whole =
+        this.view === 1
+          ? decorateDay(todayView(payload, bellsData, moment.iso, moment.minutes))
+          : decorateDay(nextDayView(payload, bellsData, moment.iso))
+      pages = pageCount(whole.rows.length, DAY_ROWS_PER_PAGE)
+      this.page = Math.min(this.page, pages - 1)
+      this.day = withPage(whole, this.page, DAY_ROWS_PER_PAGE)
     } else if (this.view === 3) {
-      this.bells = decorateBells(bellsView(bellsData, moment.minutes, todayLessons(payload, moment.iso)))
+      const whole = decorateBells(bellsView(bellsData, moment.minutes, todayLessons(payload, moment.iso)))
+      pages = pageCount(whole.rows.length, BELL_ROWS_PER_PAGE)
+      this.page = Math.min(this.page, pages - 1)
+      this.bells = withPage(whole, this.page, BELL_ROWS_PER_PAGE)
     } else if (this.view === VIEW_DEBUG) {
       this.diag = buildDiag(state)
     } else {
       this.status = buildStatus(payload, moment, state.linkState, state.lastError)
     }
+
+    this.pageCount = pages
+    this.pageMark = pages > 1 ? this.page + 1 + '/' + pages : ''
 
     // Экран «нет данных» тоже показывает кнопку и состояние связи.
     if (!payload) {
@@ -506,6 +518,21 @@ function isoDate(date) {
 
 function two(value) {
   return value < 10 ? '0' + value : String(value)
+}
+
+function pageCount(rowCount, perPage) {
+  return rowCount > perPage ? Math.ceil(rowCount / perPage) : 1
+}
+
+/** Возвращает тот же вид, но только со строками запрошенной страницы. */
+function withPage(view, page, perPage) {
+  const start = page * perPage
+  const rows = []
+  for (let i = start; i < view.rows.length && i < start + perPage; i += 1) {
+    rows.push(view.rows[i])
+  }
+  view.rows = rows
+  return view
 }
 
 function dotsFor(view) {
@@ -554,7 +581,9 @@ const STYLE_NORMAL = 'opacity: 0.9;'
 function decorateDay(view) {
   for (let i = 0; i < view.rows.length; i += 1) {
     const row = view.rows[i]
-    row.where = whereLine(row.room, row.type)
+    // Номер пары, начало и место — одной строкой сверху: на экране шириной
+    // 212 px колонка слева отнимала место у названия, а оно тут главное.
+    row.top = row.pair + ' · ' + row.start + ' · ' + whereLine(row.room, row.type)
     row.style = row.current ? STYLE_CURRENT : row.past ? STYLE_PAST : STYLE_NORMAL
   }
   if (!view.emptyText) {
@@ -663,13 +692,13 @@ function buildDiag(state) {
 }
 
 .clock {
-  font-size: 34px;
+  font-size: 38px;
   color: #ffffff;
   text-align: center;
 }
 
 .view-title {
-  font-size: 15px;
+  font-size: 16px;
   color: #7a7a7a;
   text-align: center;
   margin-top: 2px;
@@ -701,14 +730,14 @@ function buildDiag(state) {
 /* --- Сейчас --- */
 
 .headline {
-  font-size: 23px;
+  font-size: 26px;
   color: #ffffff;
   text-align: center;
   lines: 3;
 }
 
 .detail {
-  font-size: 17px;
+  font-size: 18px;
   color: #9a9a9a;
   text-align: center;
   margin-top: 4px;
@@ -728,19 +757,19 @@ function buildDiag(state) {
 }
 
 .card-label {
-  font-size: 13px;
+  font-size: 14px;
   color: #6f6f6f;
 }
 
 .card-name {
-  font-size: 20px;
+  font-size: 22px;
   color: #ffffff;
   margin-top: 2px;
   lines: 3;
 }
 
 .card-meta {
-  font-size: 15px;
+  font-size: 17px;
   color: #9a9a9a;
   margin-top: 2px;
   lines: 1;
@@ -750,14 +779,14 @@ function buildDiag(state) {
 /* --- Сегодня / Далее --- */
 
 .day-subtitle {
-  font-size: 16px;
+  font-size: 17px;
   color: #7a7a7a;
   text-align: center;
   margin-bottom: 6px;
 }
 
 .empty {
-  font-size: 19px;
+  font-size: 20px;
   color: #9a9a9a;
   text-align: center;
   margin-top: 40px;
@@ -771,16 +800,16 @@ function buildDiag(state) {
    размеров дерево схлопывается, и экран остаётся пустым. 370 px посчитаны как
    520 минус шапка, подзаголовок и точки внизу; уточнить на устройстве. */
 /* Обычный div, а не <list>: на Band 10 <list>/<list-item> занимает место,
-   но не рисует ни одной строки. Прокрутки здесь нет, поэтому строки должны
-   помещаться в отведённую высоту. */
+   но не рисует ни одной строки; <scroll> рисует, но не прокручивается. Значит
+   прокрутки нет вовсе, и длинный день разбит на страницы — их листает тап. */
 .scroll {
   flex-direction: column;
   width: 100%;
-  height: 365px;
+  height: 356px;
 }
 
 .row {
-  flex-direction: row;
+  flex-direction: column;
   width: 100%;
   margin-bottom: 6px;
   padding-top: 5px;
@@ -791,42 +820,32 @@ function buildDiag(state) {
   background-color: #121212;
 }
 
-.row-left {
-  flex-direction: column;
-  width: 44px;
-  margin-right: 6px;
-}
 
-.row-pair {
-  font-size: 24px;
-  color: #ffffff;
-  text-align: center;
-}
 
-.row-start {
-  font-size: 13px;
-  color: #a0a0a0;
-  text-align: center;
-}
 
-.row-main {
-  flex-direction: column;
-  flex-grow: 1;
+
+.row-top {
+  font-size: 16px;
+  color: #a8a8a8;
+  lines: 1;
+  text-overflow: ellipsis;
 }
 
 .row-name {
-  font-size: 18px;
+  font-size: 21px;
   color: #ffffff;
+  margin-top: 1px;
   lines: 2;
   text-overflow: ellipsis;
 }
 
-.row-meta {
-  font-size: 14px;
-  color: #a0a0a0;
-  lines: 1;
-  text-overflow: ellipsis;
+.page-mark {
+  font-size: 13px;
+  color: #8a8a8a;
+  text-align: center;
+  margin-right: 8px;
 }
+
 
 /* --- Звонки --- */
 
@@ -837,7 +856,7 @@ function buildDiag(state) {
 }
 
 .bell-pair {
-  font-size: 19px;
+  font-size: 20px;
   color: #ffffff;
   width: 20px;
   text-align: center;
@@ -850,12 +869,12 @@ function buildDiag(state) {
 }
 
 .bell-time {
-  font-size: 18px;
+  font-size: 20px;
   color: #ffffff;
 }
 
 .bell-halves {
-  font-size: 13px;
+  font-size: 14px;
   color: #9a9a9a;
 }
 
@@ -866,13 +885,13 @@ function buildDiag(state) {
 }
 
 .status-line {
-  font-size: 13px;
+  font-size: 14px;
   color: #8a8a8a;
   margin-top: 8px;
 }
 
 .status-value {
-  font-size: 19px;
+  font-size: 20px;
   color: #ffffff;
   lines: 2;
 }
@@ -889,13 +908,13 @@ function buildDiag(state) {
 }
 
 .refresh-text {
-  font-size: 17px;
+  font-size: 18px;
   color: #8AB4E8;
   text-align: center;
 }
 
 .status-note {
-  font-size: 13px;
+  font-size: 14px;
   color: #6f6f6f;
   margin-top: 16px;
   lines: 2;
@@ -910,7 +929,7 @@ function buildDiag(state) {
 }
 
 .dots {
-  font-size: 14px;
+  font-size: 15px;
   color: #5a5a5a;
   text-align: center;
 }
