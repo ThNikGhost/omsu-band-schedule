@@ -1,0 +1,5 @@
+# The plugin is a WebAssembly component; the WIT bindings only compile here.
+# Host-side tests of the core crate need an explicit override:
+#   cargo test -p omsu-sync-core --target x86_64-unknown-linux-gnu
+[build]
+target = "wasm32-wasip2"

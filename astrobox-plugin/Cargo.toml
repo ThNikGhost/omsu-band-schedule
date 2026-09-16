@@ -1,0 +1,26 @@
+[package]
+name = "omsu-band-schedule-plugin"
+version = "1.0.0"
+edition = "2024"
+description = "Syncs the OmSU schedule from the server to a Xiaomi Smart Band 10"
+publish = false
+
+[workspace]
+members = ["core"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+omsu-sync-core = { path = "core" }
+astrobox-ng-wit = "0.3"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+waki = "0.5.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

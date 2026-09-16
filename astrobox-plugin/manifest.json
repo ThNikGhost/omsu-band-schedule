@@ -1,0 +1,19 @@
+{
+  "name": "Расписание ОмГУ",
+  "icon": "icon.png",
+  "version": "1.0.0",
+  "description": "Забирает расписание пар ОмГУ с личного сервера и отправляет его на Xiaomi Smart Band 10",
+  "author": "ThNikGhost",
+  "website": "https://github.com/ThNikGhost/omsu-band-schedule",
+  "entry": "omsu_band_schedule_plugin.wasm",
+  "wasi_version": 2,
+  "api_level": 3,
+  "permissions": [
+    "network",
+    "device",
+    "interconnect",
+    "register_interconnect_recv",
+    "thirdpartyapp"
+  ],
+  "additional_files": []
+}
