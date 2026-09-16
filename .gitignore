@@ -39,3 +39,4 @@ docs/ORIGINAL_SPEC.md
 .DS_Store
 Thumbs.db
 *.swp
+docker-compose.override.yml
