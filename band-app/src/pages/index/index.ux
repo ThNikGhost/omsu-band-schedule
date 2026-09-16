@@ -44,6 +44,7 @@
           style="{{ row.style }}">
           <text class="row-top">{{ row.top }}</text>
           <text class="row-name">{{ row.name }}</text>
+          <text class="row-bottom">{{ row.bottom }}</text>
         </div>
         <div class="tail"></div>
       </scroll>
@@ -554,9 +555,10 @@ const STYLE_NORMAL = 'background-color: #1A1A1A;'
 function decorateDay(view) {
   for (let i = 0; i < view.rows.length; i += 1) {
     const row = view.rows[i]
-    // Номер пары, начало и место — одной строкой сверху: на экране шириной
-    // 212 px колонка слева отнимала место у названия, а оно тут главное.
-    row.top = row.pair + ' · ' + row.start + ' · ' + whereLine(row.room, row.type)
+    // Три строки, а не одна: всё вместе давало 24 знака при вмещающихся 17,
+    // и тип занятия обрезался в «П...».
+    row.top = row.pair + ' пара · ' + row.start
+    row.bottom = whereLine(row.room, row.type)
     row.style = row.current ? STYLE_CURRENT : row.past ? STYLE_PAST : STYLE_NORMAL
   }
   if (!view.emptyText) {
@@ -827,8 +829,16 @@ function buildDiag(state) {
   font-size: 22px;
   font-weight: bold;
   color: #ffffff;
-  margin-top: 1px;
+  margin-top: 2px;
+  margin-bottom: 2px;
   lines: 2;
+  text-overflow: ellipsis;
+}
+
+.row-bottom {
+  font-size: 16px;
+  color: #b8b8b8;
+  lines: 1;
   text-overflow: ellipsis;
 }
 
