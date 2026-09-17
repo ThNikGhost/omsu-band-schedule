@@ -1,5 +1,5 @@
 /**
- * Generates src/common/bells.js and src/common/mock.js from shared/.
+ * Generates src/common/bells.js, mock.js and baked.js from shared/.
  *
  * The band cannot read shared/*.json at runtime, so the data has to be baked
  * into the bundle. Generating it keeps one source of truth with the server;
@@ -32,12 +32,20 @@ function emit(name, exportName, value) {
 
 const bells = read('bells.json')
 const example = read('example.json')
+// Расписание для работы без телефона. Пересобирается на сервере:
+//   uv run python -m app.cli bake --group 5028 --subgroup 1
+const baked = read('baked.json')
 
 const bellsSize = emit('bells.js', 'bells', bells)
 // Phase 2 runs entirely on this sample until interconnect is wired up.
 const mockSize = emit('mock.js', 'mock', example)
+const bakedSize = emit('baked.js', 'baked', baked)
 
 console.log(`src/common/bells.js  ${bellsSize} bytes  (${bells.pairs.length} pairs)`)
+console.log(
+  `src/common/baked.js  ${bakedSize} bytes  ` +
+    `(${baked.days.length} published days, ${Object.keys(baked.cycle).length} cycle slots)`
+)
 console.log(
   `src/common/mock.js   ${mockSize} bytes  (${example.days.length} days, ` +
     `${example.days.reduce((n, d) => n + d.l.length, 0)} lessons)`

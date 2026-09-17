@@ -26,8 +26,8 @@ eservice.omsu.ru  --(раз в 3 ч)-->  server/  --(HTTP + токен)-->  astr
 ```bash
 # band-app
 cd band-app && npm install && npm run gen
-npm test          # 151 тест чистой логики, без эмулятора
-npm run build     # dist/ru.omsu.bandschedule.debug.1.0.0.rpk
+npm test          # 162 теста чистой логики, без эмулятора
+npm run build     # dist/ru.omsu.bandschedule.debug.<версия>.rpk, с проверкой сборки
 npx http-server preview -p 8123   # превью экранов в браузере
 ```
 
@@ -38,6 +38,7 @@ uv run ruff check . && uv run ruff format --check .
 uv run pytest -q
 uv run uvicorn app.main:app --reload --port 8080
 uv run python -m app.cli check-names --group 5028   # проверить словарь сокращений
+uv run python -m app.cli bake --group 5028 --subgroup 1   # расписание для работы без телефона
 
 # деплой (OptiPlex)
 docker compose up -d --build
@@ -57,7 +58,9 @@ docker compose up -d --build
 - Сервер запускается строго в один воркер: снапшоты, rate limiter и планировщик живут в памяти.
 - В `band-app/src/common/*.js` **не должно быть ни одного `@system.*`** — это граница,
   которая позволяет тестировать всю логику на Node без эмулятора.
-- `band-app/src/common/bells.js` и `mock.js` генерируются (`npm run gen`), править вручную нельзя.
+- `band-app/src/common/bells.js`, `mock.js` и `baked.js` генерируются (`npm run gen`),
+  править вручную нельзя. `baked.js` — расписание, вшитое в сборку: браслет работает
+  без телефона, потому что bluetooth-сессию у него обычно держит Mi Fitness.
 
 ## Ключевые факты
 

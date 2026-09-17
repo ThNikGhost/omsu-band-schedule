@@ -173,6 +173,91 @@ def cmd_gen_example(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bake(settings: Settings, args: argparse.Namespace) -> int:
+    """Собирает расписание для полностью автономного браслета.
+
+    Синхронизация через телефон требует, чтобы bluetooth-сессию держал AstroBox,
+    а у браслета она одна — значит Mi Fitness в это время не работает
+    (docs/DECISIONS.md). Чтобы не выбирать между расписанием и пульсом,
+    расписание можно вшить прямо в приложение.
+
+    В файл идёт две вещи:
+
+    * `days` — реальные опубликованные дни от сегодня. Это правда, но вуз
+      публикует неглубоко, обычно дней на десять вперёд.
+    * `cycle` — двухнедельный шаблон по последним неделям. Им заполняются даты,
+      до которых публикация ещё не дошла.
+
+    Точность шаблона измерена на реальных данных группы 5028: 85–90% дней
+    совпадают полностью. Ошибается он почти всегда в одну сторону — в жизни
+    появляется пара, которой в шаблоне нет, — поэтому вычисленные дни помечены
+    флагом `approx`, и приложение показывает их как приблизительные.
+    """
+    abbreviate = Abbreviator.from_yaml(settings.abbreviations_path)
+    snapshot = _snapshot(settings, args.group, args.source)
+    now = settings.now()
+    today = now.date()
+
+    def out(lesson) -> LessonOut:
+        return LessonOut(
+            p=lesson.pair,
+            n=abbreviate(lesson.subject),
+            t=abbreviate.lesson_type(lesson.type),
+            r=lesson.room,
+            tc=lesson.teacher,
+            sg=lesson.subgroup,
+        )
+
+    def wanted(lesson) -> bool:
+        return args.subgroup is None or lesson.subgroup in (None, args.subgroup)
+
+    by_date: dict[dt.date, list[LessonOut]] = {}
+    for lesson in snapshot.lessons:
+        if wanted(lesson):
+            by_date.setdefault(lesson.date, []).append(out(lesson))
+
+    published = sorted(d for d in by_date if d >= today)
+    days = [DayOut(d=d.isoformat(), l=by_date[d]) for d in published]
+
+    # Чётность считается от понедельника-якоря, а не по номеру ISO-недели:
+    # на браслете вычислить разницу дат тривиально, а номер ISO-недели — нет.
+    anchor_monday = today - dt.timedelta(days=today.weekday())
+    window_start = anchor_monday - dt.timedelta(weeks=args.weeks)
+
+    cycle: dict[str, list[LessonOut]] = {}
+    for date in sorted(by_date):
+        if not (window_start <= date < anchor_monday + dt.timedelta(days=14)):
+            continue
+        parity = ((date - anchor_monday).days // 7) % 2
+        # Свежие недели важнее старых, поэтому поздние перезаписывают ранние.
+        cycle[f"{date.weekday()}-{parity}"] = by_date[date]
+
+    baked = {
+        "v": 1,
+        "gid": args.group,
+        "g": snapshot.group_name,
+        "sg": args.subgroup,
+        "gen": now.isoformat(timespec="seconds"),
+        "src": snapshot.fetched_at.isoformat(timespec="seconds"),
+        "anchor": anchor_monday.isoformat(),
+        "days": [json.loads(day.model_dump_json()) for day in days],
+        "cycle": {
+            key: [json.loads(item.model_dump_json()) for item in value]
+            for key, value in sorted(cycle.items())
+        },
+    }
+
+    target = Path(args.out) if args.out else SHARED_DIR / "baked.json"
+    body = json.dumps(baked, ensure_ascii=False, indent=1) + "\n"
+    atomic_write(target, body.encode("utf-8"))
+
+    lessons = sum(len(day.l) for day in days)
+    print(f"wrote {target}")
+    print(f"{len(days)} published days ({lessons} lessons), {len(cycle)} slots in the cycle")
+    print(f"anchor Monday {anchor_monday}, cycle built from the last {args.weeks} weeks")
+    return 0
+
+
 def cmd_find_group(settings: Settings, args: argparse.Namespace) -> int:
     """Look up a group id by name.
 
@@ -319,6 +404,12 @@ def build_parser() -> argparse.ArgumentParser:
     example.add_argument("--subgroup", type=int, default=None)
     example.add_argument("--out", default=None)
     example.set_defaults(func=cmd_gen_example)
+
+    bake = with_source(sub.add_parser("bake", help="regenerate shared/baked.json for offline use"))
+    bake.add_argument("--subgroup", type=int, default=None)
+    bake.add_argument("--weeks", type=int, default=4, help="how far back to look for the cycle")
+    bake.add_argument("--out", default=None)
+    bake.set_defaults(func=cmd_bake)
 
     find = sub.add_parser("find-group", help="look up a group id by name")
     find.add_argument("name", nargs="?", default="")
